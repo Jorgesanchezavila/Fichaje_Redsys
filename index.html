@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Control de Jornada</title>
+<meta name="theme-color" content="#E30613">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Jornada">
+<meta name="description" content="Control de jornada laboral Redsys">
+<link rel="manifest" href="data:application/json;charset=utf-8,%7B%22name%22%3A%22Control%20de%20Jornada%22%2C%22short_name%22%3A%22Jornada%22%2C%22description%22%3A%22Control%20de%20jornada%20laboral%20Redsys%22%2C%22start_url%22%3A%22.%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23111214%22%2C%22theme_color%22%3A%22%23E30613%22%2C%22orientation%22%3A%22portrait%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%2C%253Csvg%2520xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%2520viewBox%3D'0%25200%252096%252096'%253E%253Crect%2520width%3D'96'%2520height%3D'96'%2520rx%3D'20'%2520fill%3D'%2523111214'%2F%253E%253Ccircle%2520cx%3D'48'%2520cy%3D'48'%2520r%3D'34'%2520fill%3D'none'%2520stroke%3D'%2523E30613'%2520stroke-width%3D'5'%2F%253E%253Ctext%2520x%3D'48'%2520y%3D'56'%2520text-anchor%3D'middle'%2520font-size%3D'32'%253E%25E2%258F%25B1%253C%2Ftext%253E%253C%2Fsvg%253E%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#111214; --surface:#1a1c1f; --surface2:#222428; --border:#2e3035;
+  --accent:#E30613; --accent2:#b8000f; --accent3:#ff4d57;
+  --text:#f0f1f3; --muted:#6b7280; --danger:#ff2d3a; --warn:#f59e0b; --success:#22c55e;
+  --red-primary:#E30613; --red-dark:#b8000f; --red-light:#ff2d3a;
+  --grey-light:#9ca3af;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:'DM Sans',sans-serif;
+  min-height:100vh; display:flex; flex-direction:column; align-items:center;
+  padding:calc(20px + env(safe-area-inset-top)) 14px calc(48px + env(safe-area-inset-bottom));
+  background-image:
+    radial-gradient(ellipse 55% 35% at 85% 5%,rgba(227,6,19,.06) 0%,transparent 60%),
+    radial-gradient(ellipse 40% 30% at 5% 90%,rgba(184,0,15,.04) 0%,transparent 60%);
+}
+
+/* ── Header ── */
+header{text-align:center;margin-bottom:24px}
+.logo-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:4px}
+.logo-icon{width:34px;height:34px;border:2px solid var(--accent);border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:15px}
+h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight:700;letter-spacing:-.5px}
+.subtitle{font-size:11px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+
+/* ── Clock ── */
+.now-time{font-family:'Space Mono',monospace;font-size:12px;color:var(--muted);text-align:center;margin-bottom:20px}
+.tick{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);
+  margin-right:7px;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+
+/* ── Display principal ── */
+.display-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:20px;
+  padding:24px 20px;width:100%;max-width:460px;margin-bottom:14px;
+  text-align:center;position:relative;overflow:hidden
+}
+.display-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,var(--red-primary),var(--red-dark));
+  border-radius:20px 20px 0 0;transition:background .4s
+}
+.display-card.warn-state::before{background:linear-gradient(90deg,var(--warn),var(--accent2))}
+.display-card.done-state::before{background:linear-gradient(90deg,var(--success),#16a34a)}
+.status-label{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);font-weight:500;margin-bottom:16px}
+.time-big{
+  font-family:'Space Mono',monospace;font-size:clamp(38px,11vw,62px);font-weight:700;
+  letter-spacing:-2px;color:var(--text);line-height:1;margin-bottom:6px
+}
+.time-big.accent{color:var(--accent)} .time-big.warn{color:var(--warn)} .time-big.done{color:var(--success)}
+.progress-track{background:var(--surface2);border-radius:100px;height:5px;width:100%;overflow:hidden;margin-bottom:16px}
+.progress-bar{height:100%;border-radius:100px;background:linear-gradient(90deg,var(--red-dark),var(--red-primary));
+  transition:width .5s ease,background .4s;min-width:0}
+.progress-bar.warn{background:linear-gradient(90deg,var(--warn),var(--accent2))}
+.progress-bar.done{background:linear-gradient(90deg,var(--success),#16a34a)}
+.exit-info{
+  margin-top:4px;background:rgba(0,0,0,.25);border:1px solid rgba(227,6,19,.25);
+  border-radius:12px;padding:12px 16px;
+}
+.exit-info-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:2px}
+.exit-info-time{font-family:'Space Mono',monospace;font-size:44px;font-weight:700;
+  color:var(--accent);letter-spacing:-2px;line-height:1;transition:color .3s}
+.exit-info-sub{font-size:11px;color:var(--muted);margin-top:4px}
+
+/* ── Stats ── */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;max-width:460px;margin-bottom:14px}
+.stat-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 8px;text-align:center}
+.stat-value{font-family:'Space Mono',monospace;font-size:15px;font-weight:700;color:var(--text);margin-bottom:3px}
+.stat-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+
+/* ── Alerta ── */
+.info-alert{
+  border-radius:10px;padding:9px 14px;font-size:12px;text-align:center;
+  width:100%;max-width:460px;margin-bottom:14px;display:none;
+  background:rgba(227,6,19,.06);border:1px solid rgba(227,6,19,.2);color:var(--accent)
+}
+.info-alert.visible{display:block}
+.info-alert.danger{background:rgba(255,71,87,.06);border-color:rgba(255,71,87,.3);color:var(--danger)}
+
+/* ── Card ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;
+  padding:20px;width:100%;max-width:460px;margin-bottom:14px}
+.card-title{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;text-transform:uppercase;
+  color:var(--muted);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.card-title::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ── Botones acción ── */
+.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:0}
+.btn-action{
+  border:none;border-radius:12px;cursor:pointer;
+  font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;
+  padding:14px 10px;display:flex;flex-direction:column;align-items:center;
+  gap:4px;transition:all .2s;position:relative;overflow:hidden
+}
+.btn-action .btn-icon{font-size:20px;line-height:1}
+.btn-action .btn-sub{font-size:10px;opacity:.7;font-weight:400;letter-spacing:.5px}
+.btn-entrada{background:rgba(227,6,19,.12);color:var(--red-primary);border:1px solid rgba(227,6,19,.35)}
+.btn-entrada:hover:not(:disabled){background:rgba(227,6,19,.22);transform:translateY(-1px)}
+.btn-salida{background:rgba(107,114,128,.12);color:var(--grey-light);border:1px solid rgba(107,114,128,.3)}
+.btn-salida:hover:not(:disabled){background:rgba(107,114,128,.22);transform:translateY(-1px)}
+.btn-action:disabled{opacity:.35;cursor:not-allowed;transform:none!important}
+.btn-action.active-state{box-shadow:0 0 0 2px currentColor}
+
+/* Botones comida y break */
+.btn-row-pause{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.btn-pause{
+  border:none;border-radius:12px;cursor:pointer;
+  font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;
+  padding:12px 10px;display:flex;flex-direction:column;align-items:center;
+  gap:3px;transition:all .2s
+}
+.btn-pause .btn-icon{font-size:17px}
+.btn-pause .btn-sub{font-size:10px;opacity:.7;font-weight:400}
+.btn-comida{background:rgba(245,158,11,.1);color:#f59e0b;border:1px solid rgba(245,158,11,.3)}
+.btn-comida:hover:not(:disabled){background:rgba(245,158,11,.2);transform:translateY(-1px)}
+.btn-comida.active-state{box-shadow:0 0 0 2px #f59e0b;background:rgba(245,158,11,.2)}
+.btn-break{background:rgba(156,163,175,.1);color:var(--grey-light);border:1px solid rgba(156,163,175,.25)}
+.btn-break:hover:not(:disabled){background:rgba(156,163,175,.18);transform:translateY(-1px)}
+.btn-break.active-state{box-shadow:0 0 0 2px var(--grey-light);background:rgba(156,163,175,.18)}
+.btn-pause:disabled{opacity:.35;cursor:not-allowed;transform:none!important}
+
+/* Bolsa */
+.bolsa-box{background:var(--surface2);border:1px solid var(--border);border-radius:12px;
+  padding:12px 14px;margin-bottom:14px}
+.bolsa-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.bolsa-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.bolsa-val{font-family:'Space Mono',monospace;font-size:20px;color:var(--accent);font-weight:700}
+.bolsa-sub{font-size:10px;color:var(--muted);text-align:center;margin-top:6px}
+
+/* Eventos log */
+.btn-events-toggle{
+  width:100%;margin-top:10px;background:none;border:1px dashed var(--border);
+  border-radius:8px;color:var(--muted);cursor:pointer;padding:8px 12px;
+  font-family:'DM Sans',sans-serif;font-size:12px;
+  display:flex;align-items:center;justify-content:space-between;
+  transition:all .2s;
+}
+.btn-events-toggle:hover{border-color:var(--accent);color:var(--text)}
+.btn-events-toggle.open{border-color:var(--border);border-style:solid;border-bottom-left-radius:0;border-bottom-right-radius:0;margin-bottom:0}
+.events-log{display:flex;flex-direction:column;gap:6px;margin-top:0}
+.events-log.open{
+  border:1px solid var(--border);border-top:none;
+  border-bottom-left-radius:8px;border-bottom-right-radius:8px;
+  padding:8px 0 4px;
+}
+.event-item{
+  display:flex;align-items:center;gap:10px;
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:8px;padding:8px 12px;font-size:12px
+}
+.event-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.event-time{font-family:'Space Mono',monospace;font-size:13px;color:var(--text);font-weight:700;min-width:42px}
+.event-label{color:var(--muted);flex:1}
+.event-dur{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted)}
+.btn-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;
+  padding:2px 4px;border-radius:4px;transition:color .15s}
+.btn-del:hover{color:var(--danger)}
+.no-events{font-size:12px;color:var(--muted);text-align:center;padding:10px 0}
+
+/* ── Historial ── */
+.hist-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;cursor:pointer}
+.hist-toggle{font-size:12px;color:var(--accent);font-family:'Space Mono',monospace}
+.hist-day{
+  background:var(--surface2);border:1px solid var(--border);border-radius:12px;
+  padding:14px;margin-bottom:10px;cursor:pointer;transition:border-color .2s
+}
+.hist-day:hover{border-color:var(--red-primary)}
+.hist-day-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:0}
+.hist-day-date{font-family:'Space Mono',monospace;font-size:13px;color:var(--text);font-weight:700}
+.hist-day-sum{font-size:11px;color:var(--muted)}
+.hist-day-pills{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.pill{font-family:'Space Mono',monospace;font-size:10px;padding:3px 8px;border-radius:100px;
+  border:1px solid var(--border);color:var(--muted)}
+.pill.ok{border-color:rgba(227,6,19,.35);color:var(--accent)}
+.pill.warn{border-color:rgba(255,215,42,.3);color:var(--warn)}
+.pill.bad{border-color:rgba(255,71,87,.3);color:var(--danger)}
+.hist-day-events{margin-top:10px;display:none;flex-direction:column;gap:5px}
+.hist-day-events.open{display:flex}
+.hist-empty{font-size:12px;color:var(--muted);text-align:center;padding:16px 0}
+
+.nota{font-size:11px;color:var(--muted);text-align:center;max-width:460px;line-height:1.7;margin-top:4px}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── Modal confirmación ── */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);
+  display:flex;align-items:flex-end;justify-content:center;
+  z-index:999;opacity:0;pointer-events:none;transition:opacity .2s;
+  padding:0 14px 24px;
+}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal-box{
+  background:var(--surface);border:1px solid var(--border);border-radius:20px;
+  padding:24px 20px;width:100%;max-width:460px;
+  transform:translateY(30px);transition:transform .25s cubic-bezier(.34,1.56,.64,1);
+}
+.modal-overlay.open .modal-box{transform:translateY(0)}
+.modal-icon{font-size:36px;text-align:center;margin-bottom:10px}
+.modal-title{font-family:'Space Mono',monospace;font-size:16px;font-weight:700;
+  text-align:center;color:var(--text);margin-bottom:6px}
+.modal-sub{font-size:13px;color:var(--muted);text-align:center;margin-bottom:20px;line-height:1.5}
+.modal-time{font-family:'Space Mono',monospace;font-size:28px;font-weight:700;
+  text-align:center;color:var(--accent);margin-bottom:20px}
+.modal-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.modal-btn{
+  border:none;border-radius:12px;padding:14px;cursor:pointer;
+  font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;transition:all .15s;
+}
+.modal-btn-cancel{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+.modal-btn-cancel:hover{color:var(--text);border-color:var(--muted)}
+.modal-btn-confirm{background:rgba(227,6,19,.15);color:var(--red-primary);border:1px solid rgba(227,6,19,.35)}
+.modal-btn-confirm:hover{background:rgba(227,6,19,.28)}
+.modal-btn-confirm.salida{background:rgba(107,114,128,.15);color:var(--grey-light);border-color:rgba(107,114,128,.3)}
+.modal-btn-confirm.salida:hover{background:rgba(107,114,128,.28)}
+.modal-btn-confirm.medico{background:rgba(139,92,246,.15);color:#a78bfa;border-color:rgba(139,92,246,.3)}
+.modal-btn-confirm.medico:hover{background:rgba(139,92,246,.28)}
+
+/* Botón médico */
+.btn-medico{
+  width:100%;margin-top:10px;border:none;border-radius:12px;cursor:pointer;
+  font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;
+  padding:12px 10px;display:flex;align-items:center;justify-content:center;gap:8px;
+  background:rgba(139,92,246,.1);color:#a78bfa;border:1px solid rgba(139,92,246,.25);
+  transition:all .2s;
+}
+.btn-medico:hover:not(:disabled){background:rgba(139,92,246,.2);transform:translateY(-1px)}
+.btn-medico:disabled{opacity:.35;cursor:not-allowed;transform:none!important}
+.btn-medico .btn-icon{font-size:17px}
+
+/* Alerta recuperar */
+.recover-box{
+  background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.25);
+  border-radius:12px;padding:14px 16px;margin-top:10px;display:none;text-align:center;
+}
+.recover-box.visible{display:block}
+.recover-title{font-size:11px;color:#a78bfa;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.recover-time{font-family:'Space Mono',monospace;font-size:28px;font-weight:700;color:#a78bfa;line-height:1}
+.recover-sub{font-size:11px;color:var(--muted);margin-top:4px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-row">
+    <div class="logo-icon">⏱</div>
+    <h1>CONTROL DE JORNADA</h1>
+  </div>
+  <div class="subtitle">Seguimiento de horario laboral</div>
+</header>
+
+<div class="now-time" id="nowTime">—</div>
+
+<!-- PANTALLA PRINCIPAL -->
+<div class="display-card" id="displayCard">
+  <div class="status-label" id="statusLabel">Pulsa ENTRADA para comenzar</div>
+  <div class="time-big accent" id="timeBig">--:--:--</div>
+  <div class="progress-track"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+  <div class="exit-info">
+    <div class="exit-info-label">Salida prevista</div>
+    <div class="exit-info-time" id="exitTime">--:--</div>
+    <div class="exit-info-sub" id="statExitSub">—</div>
+  </div>
+</div>
+
+<!-- STATS pequeños -->
+<div class="stats-grid">
+  <div class="stat-box"><div class="stat-value" id="statWorked">--</div><div class="stat-label">Trabajado</div></div>
+  <div class="stat-box"><div class="stat-value" id="statPausas">0m/60m</div><div class="stat-label">Pausas</div></div>
+</div>
+
+<div class="info-alert" id="infoAlert"></div>
+
+<!-- BOTONES PRINCIPALES -->
+<div class="card">
+  <div class="card-title">⬛ Fichar</div>
+  <div class="btn-row">
+    <button class="btn-action btn-entrada" id="btnEntrada" onclick="fichEntrada()">
+      <span class="btn-icon">▶</span>
+      <span>ENTRADA</span>
+      <span class="btn-sub" id="lblEntrada">sin fichar</span>
+    </button>
+    <button class="btn-action btn-salida" id="btnSalida" onclick="fichSalida()" disabled>
+      <span class="btn-icon">⏹</span>
+      <span>SALIDA</span>
+      <span class="btn-sub" id="lblSalida">sin fichar</span>
+    </button>
+  </div>
+  <button class="btn-medico" id="btnMedico" onclick="fichMedico()" disabled>
+    <span class="btn-icon">🏥</span>
+    <span>SALIDA MÉDICO / ANTICIPADA</span>
+  </button>
+  <div class="recover-box" id="recoverBox">
+    <div class="recover-title">Tiempo a recuperar</div>
+    <div class="recover-time" id="recoverTime">--:--</div>
+    <div class="recover-sub" id="recoverSub">—</div>
+  </div>
+</div>
+
+<!-- BOLSA + PAUSAS -->
+<div class="card">
+  <div class="card-title">⬛ Bolsa de pausas — 1h total</div>
+  <div class="bolsa-box">
+    <div class="bolsa-row">
+      <span class="bolsa-lbl">Bolsa disponible</span>
+      <span class="bolsa-val" id="bolsaVal">60m</span>
+    </div>
+    <div class="progress-track" style="margin-bottom:0">
+      <div class="progress-bar" id="bolsaBar" style="width:100%"></div>
+    </div>
+    <div class="bolsa-sub" id="bolsaSub">Comida + breaks comparten esta hora</div>
+  </div>
+
+  <div class="btn-row-pause">
+    <button class="btn-pause btn-comida" id="btnComida" onclick="toggleComida()" disabled>
+      <span class="btn-icon">🍽</span>
+      <span>COMIDA</span>
+      <span class="btn-sub" id="lblComida">inactivo</span>
+    </button>
+    <button class="btn-pause btn-break" id="btnBreak" onclick="toggleBreak()" disabled>
+      <span class="btn-icon">☕</span>
+      <span>DESCANSO</span>
+      <span class="btn-sub" id="lblBreak">inactivo</span>
+    </button>
+  </div>
+
+  <!-- Log de eventos de hoy -->
+  <button class="btn-events-toggle" id="btnEventsToggle" onclick="toggleEvents()">
+    <span>📋 Ver eventos registrados</span>
+    <span id="eventsCount" style="font-family:'Space Mono',monospace;font-size:11px;opacity:.6">0</span>
+  </button>
+  <div class="events-log" id="eventsLog" style="display:none">
+    <div class="no-events">Sin eventos registrados</div>
+  </div>
+</div>
+
+<!-- HISTORIAL -->
+<div class="card">
+  <div class="hist-header" onclick="toggleHistorial()">
+    <div class="card-title" style="margin-bottom:0;flex:1">⬛ Historial</div>
+    <span class="hist-toggle" id="histToggleTxt">▼ ver</span>
+  </div>
+  <div id="historialBody" style="display:none">
+    <div id="historialContent"><div class="hist-empty">Sin días registrados</div></div>
+  </div>
+</div>
+
+<div class="nota">
+  <span class="tick"></span>
+  Jornada: 8h 15m efectivas + 1h de pausas = 9h 15m totales.<br>
+  Salida mínima <strong style="color:var(--text)">17:00</strong>. Datos guardados en tu dispositivo.
+</div>
+
+<!-- MODAL CONFIRMACIÓN -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box">
+    <div class="modal-icon" id="modalIcon">▶</div>
+    <div class="modal-title" id="modalTitle">Confirmar entrada</div>
+    <div class="modal-sub" id="modalSub">¿Registrar tu entrada ahora?</div>
+    <div class="modal-time" id="modalTime">--:--:--</div>
+    <div class="modal-btns">
+      <button class="modal-btn modal-btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="modal-btn modal-btn-confirm" id="modalConfirmBtn" onclick="confirmModal()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// CONSTANTES Y HORARIO POR DÍA
+// ═══════════════════════════════════════════════════════════════
+const STORAGE_KEY = 'jornada_v2';
+
+// Devuelve el horario según el día de la semana (0=Dom,5=Vie)
+function getHorario(date) {
+  const dow = (date || new Date()).getDay();
+  if (dow === 5) { // Viernes
+    return { jornadaMin: 6*60, bolsaMin: 30, minEntrada: 7*60+30, minSalida: 14*60, label: 'Jornada viernes' };
+  }
+  // Lunes–Jueves (y por si acaso sábado/domingo)
+  return { jornadaMin: 8*60+15, bolsaMin: 60, minEntrada: 7*60+45, minSalida: 17*60, label: 'Jornada L–J' };
+}
+
+// Horario del día actual (se recalcula en cada render)
+let H = getHorario();
+
+// ═══════════════════════════════════════════════════════════════
+// ESTADO HOY
+// ═══════════════════════════════════════════════════════════════
+// state.events = array de {type, ts}
+// type: 'entrada'|'salida'|'medico'|'comida_ini'|'comida_fin'|'break_ini'|'break_fin'
+let state = { events:[] };
+
+// ═══════════════════════════════════════════════════════════════
+// STORAGE
+// ═══════════════════════════════════════════════════════════════
+function todayKey() {
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+function loadStorage() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
+}
+
+function saveToday() {
+  const all = loadStorage();
+  all[todayKey()] = state;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+}
+
+function loadToday() {
+  const all = loadStorage();
+  const t = all[todayKey()];
+  state = (t && t.events) ? t : { events:[] };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UTILIDADES
+// ═══════════════════════════════════════════════════════════════
+const toHM = ts => {
+  const d = new Date(ts);
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+};
+
+const toHMS = sec => {
+  sec = Math.max(0,Math.round(sec));
+  return String(Math.floor(sec/3600)).padStart(2,'0')+':'+
+         String(Math.floor(sec%3600/60)).padStart(2,'0')+':'+
+         String(sec%60).padStart(2,'0');
+};
+
+const fmtHM = min => {
+  min = Math.max(0,Math.round(min));
+  return Math.floor(min/60)+'h '+( min%60)+'m';
+};
+
+const nowTs = () => Date.now();
+const tsToMin = ts => { const d=new Date(ts); return d.getHours()*60+d.getMinutes()+d.getSeconds()/60; };
+
+// Devuelve color y etiqueta por tipo de evento
+const eventMeta = {
+  'entrada':    { color:'#E30613', label:'Entrada' },
+  'salida':     { color:'#6b7280', label:'Salida' },
+  'medico':     { color:'#a78bfa', label:'Salida médico/anticipada' },
+  'comida_ini': { color:'#f59e0b', label:'Comida inicio' },
+  'comida_fin': { color:'#f59e0b', label:'Comida fin' },
+  'break_ini':  { color:'#9ca3af', label:'Descanso inicio' },
+  'break_fin':  { color:'#9ca3af', label:'Descanso fin' },
+};
+
+// ═══════════════════════════════════════════════════════════════
+// HELPERS DE ESTADO
+// ═══════════════════════════════════════════════════════════════
+const getLastEvent  = type => [...state.events].reverse().find(e=>e.type===type);
+const hasEvent      = type => !!getLastEvent(type);
+const isComidaOpen  = () => hasEvent('comida_ini') && !hasEvent('comida_fin');
+const isBreakOpen   = () => {
+  const opens  = state.events.filter(e=>e.type==='break_ini').length;
+  const closes = state.events.filter(e=>e.type==='break_fin').length;
+  return opens > closes;
+};
+
+// Bolsa extra: minutos que se entró antes del mínimo del día
+function calcBolsaExtra() {
+  const eEnt = getLastEvent('entrada');
+  if (!eEnt) return 0;
+  const entMin = tsToMin(eEnt.ts);
+  return Math.max(0, H.minEntrada - entMin);
+}
+
+function calcPausasMin(nowTsMs) {
+  // Comida
+  let comida = 0;
+  const cIni = getLastEvent('comida_ini');
+  if (cIni) {
+    const cFin = getLastEvent('comida_fin');
+    const endTs = cFin ? Math.min(cFin.ts, nowTsMs) : nowTsMs;
+    comida = Math.max(0, (endTs - cIni.ts)/60000);
+  }
+  // Breaks: emparejar ini/fin
+  let breaks = 0;
+  const bInis = state.events.filter(e=>e.type==='break_ini');
+  const bFins = state.events.filter(e=>e.type==='break_fin');
+  bInis.forEach((ini,i) => {
+    const fin = bFins[i];
+    const endTs = fin ? Math.min(fin.ts, nowTsMs) : nowTsMs;
+    breaks += Math.max(0, (endTs - ini.ts)/60000);
+  });
+  return { comida, breaks, total: comida+breaks };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODAL CONFIRMACIÓN
+// ═══════════════════════════════════════════════════════════════
+let modalPendingAction = null;
+let modalClockInterval = null;
+
+function openModal(type) {
+  modalPendingAction = type;
+  const isMedico  = type === 'medico';
+  const isEntrada = type === 'entrada';
+
+  document.getElementById('modalIcon').textContent  = isEntrada ? '▶' : isMedico ? '🏥' : '⏹';
+  document.getElementById('modalTitle').textContent = isEntrada ? 'Confirmar entrada' : isMedico ? 'Salida anticipada' : 'Confirmar salida';
+  document.getElementById('modalSub').textContent   = isEntrada
+    ? '¿Registrar tu entrada a esta hora?'
+    : isMedico
+      ? '¿Registrar salida por médico/motivo personal?'
+      : '¿Registrar tu salida a esta hora?';
+
+  const confirmBtn = document.getElementById('modalConfirmBtn');
+  confirmBtn.textContent = isEntrada ? 'Fichar entrada' : isMedico ? 'Registrar salida' : 'Fichar salida';
+  confirmBtn.className   = 'modal-btn modal-btn-confirm' + (isEntrada ? '' : isMedico ? ' medico' : ' salida');
+
+  const updateModalTime = () => {
+    const n = new Date();
+    document.getElementById('modalTime').textContent =
+      String(n.getHours()).padStart(2,'0')+':'+
+      String(n.getMinutes()).padStart(2,'0')+':'+
+      String(n.getSeconds()).padStart(2,'0');
+  };
+  updateModalTime();
+  modalClockInterval = setInterval(updateModalTime, 1000);
+
+  document.getElementById('modalOverlay').classList.add('open');
+  document.getElementById('modalOverlay').addEventListener('click', onOverlayClick);
+}
+
+function onOverlayClick(e) {
+  if (e.target === document.getElementById('modalOverlay')) closeModal();
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+  document.getElementById('modalOverlay').removeEventListener('click', onOverlayClick);
+  clearInterval(modalClockInterval);
+  modalPendingAction = null;
+}
+
+function confirmModal() {
+  const action = modalPendingAction;
+  closeModal();
+  if (action === 'entrada') _doFichEntrada();
+  else if (action === 'salida') _doFichSalida();
+  else if (action === 'medico') _doFichMedico();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ACCIONES
+// ═══════════════════════════════════════════════════════════════
+function fichEntrada() {
+  if (hasEvent('entrada')) return;
+  openModal('entrada');
+}
+
+function _doFichEntrada() {
+  if (hasEvent('entrada')) return;
+  const ts = nowTs();
+  const entMin = tsToMin(ts);
+  if (entMin < H.minEntrada) {
+    showAlert(`⚠️ Entrada mínima hoy: ${toHM(new Date().setHours(0,0,0,0) + H.minEntrada*60000)}`, false);
+    const todayB = new Date(); todayB.setHours(0,0,0,0);
+    showAlert(`⚠️ Entrada mínima hoy: ${toHM(todayB.getTime() + H.minEntrada*60000)}`, false);
+    return;
+  }
+  state.events.push({ type:'entrada', ts });
+  saveToday(); renderAll();
+}
+
+function fichSalida() {
+  if (!hasEvent('entrada') || hasEvent('salida') || hasEvent('medico')) return;
+  openModal('salida');
+}
+
+function _doFichSalida() {
+  if (!hasEvent('entrada') || hasEvent('salida')) return;
+  if (isComidaOpen()) state.events.push({ type:'comida_fin', ts:nowTs() });
+  if (isBreakOpen())  state.events.push({ type:'break_fin',  ts:nowTs() });
+  state.events.push({ type:'salida', ts:nowTs() });
+  saveToday(); renderAll(); renderHistorial();
+}
+
+function fichMedico() {
+  if (!hasEvent('entrada') || hasEvent('salida') || hasEvent('medico')) return;
+  openModal('medico');
+}
+
+function _doFichMedico() {
+  if (!hasEvent('entrada') || hasEvent('salida') || hasEvent('medico')) return;
+  if (isComidaOpen()) state.events.push({ type:'comida_fin', ts:nowTs() });
+  if (isBreakOpen())  state.events.push({ type:'break_fin',  ts:nowTs() });
+  state.events.push({ type:'medico', ts:nowTs() });
+  saveToday(); renderAll(); renderHistorial();
+}
+
+function toggleComida() {
+  if (!hasEvent('entrada') || hasEvent('salida')) return;
+  if (isComidaOpen()) {
+    state.events.push({ type:'comida_fin', ts:nowTs() });
+  } else {
+    if (isBreakOpen()) state.events.push({ type:'break_fin', ts:nowTs() }); // cerrar break activo
+    state.events.push({ type:'comida_ini', ts:nowTs() });
+  }
+  saveToday(); renderAll();
+}
+
+function toggleBreak() {
+  if (!hasEvent('entrada') || hasEvent('salida')) return;
+  if (isBreakOpen()) {
+    state.events.push({ type:'break_fin', ts:nowTs() });
+  } else {
+    if (isComidaOpen()) state.events.push({ type:'comida_fin', ts:nowTs() }); // cerrar comida activa
+    state.events.push({ type:'break_ini', ts:nowTs() });
+  }
+  saveToday(); renderAll();
+}
+
+function deleteEvent(idx) {
+  if (!confirm('¿Eliminar este evento?')) return;
+  state.events.splice(idx,1);
+  saveToday(); renderAll();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════════════════════
+function showAlert(msg, isDanger) {
+  const el = document.getElementById('infoAlert');
+  el.textContent = msg;
+  el.className = 'info-alert visible' + (isDanger ? ' danger' : '');
+}
+function clearAlert() {
+  document.getElementById('infoAlert').className = 'info-alert';
+}
+
+function renderAll() {
+  H = getHorario(); // actualizar horario según día actual
+  clearAlert();
+  const now = new Date();
+  const nowMs = now.getTime();
+  const nowMin = tsToMin(nowMs);
+
+  // ── Reloj + badge de horario ──
+  document.getElementById('nowTime').innerHTML =
+    `<span class="tick"></span>${now.toLocaleTimeString('es-ES')} — `+
+    now.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})+
+    ` <span style="font-family:'DM Sans';background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;font-size:10px;color:var(--muted);margin-left:6px;">${H.label}</span>`;
+
+  // ── Botones ──
+  const entered  = hasEvent('entrada');
+  const exited   = hasEvent('salida') || hasEvent('medico');
+  const comidaOn = isComidaOpen();
+  const breakOn  = isBreakOpen();
+
+  const btnE = document.getElementById('btnEntrada');
+  const btnS = document.getElementById('btnSalida');
+  const btnC = document.getElementById('btnComida');
+  const btnB = document.getElementById('btnBreak');
+  const btnM = document.getElementById('btnMedico');
+
+  btnE.disabled = entered;
+  btnS.disabled = !entered || exited;
+  btnC.disabled = !entered || exited;
+  btnB.disabled = !entered || exited;
+  btnM.disabled = !entered || exited;
+
+  const eEv = getLastEvent('entrada');
+  document.getElementById('lblEntrada').textContent = eEv ? toHM(eEv.ts) : 'sin fichar';
+  const sEv = getLastEvent('salida') || getLastEvent('medico');
+  document.getElementById('lblSalida').textContent  = sEv ? toHM(sEv.ts) : 'sin fichar';
+
+  btnC.className = 'btn-pause btn-comida' + (comidaOn ? ' active-state' : '');
+  btnB.className = 'btn-pause btn-break'  + (breakOn  ? ' active-state' : '');
+  document.getElementById('lblComida').textContent = comidaOn ? 'activa ●' : (hasEvent('comida_ini') ? 'completada' : 'inactivo');
+  document.getElementById('lblBreak').textContent  = breakOn  ? 'activo ●'  : 'inactivo';
+
+  // ── Cálculos ──
+  if (!entered) {
+    document.getElementById('timeBig').textContent  = '--:--:--';
+    document.getElementById('timeBig').className    = 'time-big accent';
+    document.getElementById('statusLabel').textContent = 'Pulsa ENTRADA para comenzar';
+    document.getElementById('exitTime').textContent = '--:--';
+    document.getElementById('statWorked').textContent = '--';
+    document.getElementById('statPausas').textContent = '0m/'+ H.bolsaMin +'m';
+    document.getElementById('exitTime').textContent = '--:--';
+    document.getElementById('statExitSub').textContent = '—';
+    document.getElementById('progressBar').style.width = '0%';
+    document.getElementById('displayCard').className = 'display-card';
+    document.getElementById('recoverBox').className = 'recover-box';
+    renderEvents();
+    updateBolsa(H.bolsaMin, 0, H.bolsaMin);
+    return;
+  }
+
+  const entTs   = getLastEvent('entrada').ts;
+  const entMin  = tsToMin(entTs);
+  const { comida, breaks, total: totalPausas } = calcPausasMin(nowMs);
+  const bolsaExtra = calcBolsaExtra();
+  const bolsaTotal = H.bolsaMin + bolsaExtra;
+  const pausaExtra = Math.max(0, totalPausas - bolsaTotal);
+  const bolsaRest  = Math.max(0, bolsaTotal - totalPausas);
+
+  // Bolsa sub label
+  const subEl = document.getElementById('bolsaSub');
+  if (bolsaExtra > 0) {
+    subEl.textContent = `Bolsa ampliada: ${H.bolsaMin}m + ${Math.round(bolsaExtra)}m por adelanto`;
+    subEl.style.color = 'var(--accent)';
+  } else {
+    subEl.textContent = `Comida + breaks comparten ${H.bolsaMin}m`;
+    subEl.style.color = '';
+  }
+
+  updateBolsa(bolsaRest, totalPausas, bolsaTotal);
+
+  let salida = Math.max(entMin + H.jornadaMin + bolsaTotal + pausaExtra, H.minSalida);
+  const trabajado = Math.max(0, nowMin - entMin - totalPausas);
+  const restante  = salida - nowMin;
+  const progreso  = Math.min(100, Math.max(0,(trabajado/H.jornadaMin)*100));
+
+  const todayBase = new Date(); todayBase.setHours(0,0,0,0);
+  const salidaTs  = todayBase.getTime() + salida * 60000;
+  document.getElementById('exitTime').textContent = toHM(salidaTs);
+  document.getElementById('exitTime').textContent = toHM(salidaTs);
+  document.getElementById('statExitSub').textContent = restante > 0
+    ? `Faltan ${fmtHM(restante)}`
+    : restante > -60 ? '✓ Puedes salir' : '✓ Jornada completada';
+
+  document.getElementById('statWorked').textContent = fmtHM(trabajado);
+  document.getElementById('statPausas').textContent = Math.round(totalPausas)+'m/'+Math.round(bolsaTotal)+'m';
+  document.getElementById('progressBar').style.width = progreso+'%';
+
+  const exitEl = document.getElementById('exitTime');
+  const exitBox = exitEl.closest('.exit-info');
+  if (medicoEv) {
+    exitEl.style.color = '#a78bfa';
+    exitBox.style.borderColor = 'rgba(139,92,246,.4)';
+  } else if (restante <= 0) {
+    exitEl.style.color = 'var(--success)';
+    exitBox.style.borderColor = 'rgba(34,197,94,.4)';
+  } else if (restante <= 30) {
+    exitEl.style.color = 'var(--warn)';
+    exitBox.style.borderColor = 'rgba(245,158,11,.4)';
+  } else {
+    exitEl.style.color = 'var(--accent)';
+    exitBox.style.borderColor = 'rgba(227,6,19,.25)';
+  }
+
+  if (pausaExtra > 0)
+    showAlert('⚠️ Bolsa superada en '+Math.round(pausaExtra)+'min → salida retrasada', true);
+
+  // ── Caja de recuperación médico ──
+  const medicoEv = getLastEvent('medico');
+  const recoverBox = document.getElementById('recoverBox');
+  if (medicoEv) {
+    const medicoMin = tsToMin(medicoEv.ts);
+    // Tiempo que le falta desde que salió hasta su salida prevista
+    const recuperar = Math.max(0, salida - medicoMin);
+    document.getElementById('recoverTime').textContent = fmtHM(recuperar);
+    document.getElementById('recoverSub').textContent =
+      `Saliste a las ${toHM(medicoEv.ts)} — salida prevista ${toHM(new Date().setHours(0,0,0,0) + salida*60000 - salida*60000 + salida*60000)}`;
+    const todayB = new Date(); todayB.setHours(0,0,0,0);
+    document.getElementById('recoverSub').textContent =
+      `Saliste a las ${toHM(medicoEv.ts)} · Salida prevista: ${toHM(todayB.getTime()+salida*60000)}`;
+    recoverBox.className = 'recover-box visible';
+  } else {
+    recoverBox.className = 'recover-box';
+  }
+
+  const timeBig     = document.getElementById('timeBig');
+  const statusLabel = document.getElementById('statusLabel');
+  const progressBar = document.getElementById('progressBar');
+  const displayCard = document.getElementById('displayCard');
+
+  if (medicoEv) {
+    const medicoMin = tsToMin(medicoEv.ts);
+    const recuperar = Math.max(0, salida - medicoMin);
+    timeBig.className = 'time-big'; timeBig.style.color = '#a78bfa';
+    timeBig.textContent = fmtHM(recuperar).replace('h ',':').replace('m','');
+    statusLabel.textContent = '🏥 Salida anticipada — tiempo a recuperar';
+    displayCard.className = 'display-card';
+    progressBar.className = 'progress-bar';
+    progressBar.style.background = 'linear-gradient(90deg,#7c3aed,#a78bfa)';
+  } else if (exited) {
+    timeBig.className = 'time-big done'; timeBig.textContent = '✓ FIN';
+    statusLabel.textContent = '¡Jornada completada!';
+    displayCard.className = 'display-card done-state';
+    progressBar.className = 'progress-bar done'; progressBar.style.width='100%';
+  } else if (restante <= 0) {
+    timeBig.className = 'time-big done'; timeBig.textContent = '✓ LISTO';
+    statusLabel.textContent = 'Hora de salir — puedes fichar salida';
+    displayCard.className = 'display-card done-state';
+    progressBar.className = 'progress-bar done'; progressBar.style.width='100%';
+  } else if (comidaOn || breakOn) {
+    const pausaActMs = comidaOn
+      ? nowMs - getLastEvent('comida_ini').ts
+      : nowMs - [...state.events].reverse().find(e=>e.type==='break_ini').ts;
+    timeBig.className = comidaOn ? 'time-big' : 'time-big warn';
+    timeBig.style.color = comidaOn ? 'var(--warn)' : 'var(--warn)';
+    timeBig.textContent = toHMS(pausaActMs/1000);
+    statusLabel.textContent = comidaOn ? 'Pausa comida en curso' : 'Descanso en curso';
+    displayCard.className = 'display-card';
+    progressBar.className = 'progress-bar';
+  } else if (restante <= 30) {
+    timeBig.className = 'time-big warn'; timeBig.style.color='';
+    timeBig.textContent = toHMS(restante*60);
+    statusLabel.textContent = '⚠ Tramo final — ¡casi terminado!';
+    displayCard.className = 'display-card warn-state';
+    progressBar.className = 'progress-bar warn';
+  } else {
+    timeBig.className = 'time-big accent'; timeBig.style.color='';
+    timeBig.textContent = toHMS(restante*60);
+    statusLabel.textContent = 'Tiempo restante de jornada';
+    displayCard.className = 'display-card';
+    progressBar.className = 'progress-bar';
+  }
+
+  renderEvents();
+}
+
+function updateBolsa(bolsaRest, totalPausas, bolsaTotal) {
+  bolsaTotal = bolsaTotal || H.bolsaMin;
+  const pct = Math.max(0,(bolsaRest/bolsaTotal)*100);
+  document.getElementById('bolsaVal').textContent = Math.round(bolsaRest)+'m';
+  const bar = document.getElementById('bolsaBar');
+  const val = document.getElementById('bolsaVal');
+  bar.style.width = pct+'%';
+  if (bolsaRest <= 0)  { bar.style.background='linear-gradient(90deg,var(--danger),var(--accent2))'; val.style.color='var(--danger)'; }
+  else if (bolsaRest<=15){ bar.style.background='linear-gradient(90deg,var(--warn),var(--accent2))'; val.style.color='var(--warn)'; }
+  else                  { bar.style.background='linear-gradient(90deg,var(--red-dark),var(--red-primary))'; val.style.color='var(--accent)'; }
+}
+
+function toggleEvents() {
+  const log = document.getElementById('eventsLog');
+  const btn = document.getElementById('btnEventsToggle');
+  const isOpen = log.style.display !== 'none';
+  log.style.display = isOpen ? 'none' : 'flex';
+  log.className = isOpen ? 'events-log' : 'events-log open';
+  btn.className = isOpen ? 'btn-events-toggle' : 'btn-events-toggle open';
+  btn.querySelector('span:first-child').textContent = isOpen ? '📋 Ver eventos registrados' : '📋 Ocultar eventos';
+}
+
+function renderEvents() {
+  const log = document.getElementById('eventsLog');
+  const countEl = document.getElementById('eventsCount');
+  const count = state.events.length;
+  if (countEl) countEl.textContent = count > 0 ? count + (count === 1 ? ' evento' : ' eventos') : '';
+  if (!count) {
+    log.innerHTML = '<div class="no-events">Sin eventos registrados hoy</div>';
+    return;
+  }
+  log.innerHTML = state.events.map((e,i) => {
+    const m = eventMeta[e.type] || { color:'#fff', label:e.type };
+    return `<div class="event-item" style="animation:fadeIn .2s ease">
+      <span class="event-dot" style="background:${m.color}"></span>
+      <span class="event-time">${toHM(e.ts)}</span>
+      <span class="event-label">${m.label}</span>
+      <button class="btn-del" onclick="deleteEvent(${i})" title="Eliminar">✕</button>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HISTORIAL
+// ═══════════════════════════════════════════════════════════════
+let histOpen = false;
+
+function toggleHistorial() {
+  histOpen = !histOpen;
+  document.getElementById('historialBody').style.display = histOpen ? 'block' : 'none';
+  document.getElementById('histToggleTxt').textContent = histOpen ? '▲ ocultar' : '▼ ver';
+  if (histOpen) renderHistorial();
+}
+
+function renderHistorial() {
+  const all = loadStorage();
+  const today = todayKey();
+  const days  = Object.keys(all).filter(k=>k!==today).sort().reverse();
+  const cont  = document.getElementById('historialContent');
+
+  if (!days.length) {
+    cont.innerHTML = '<div class="hist-empty">Sin días anteriores registrados</div>';
+    return;
+  }
+
+  cont.innerHTML = days.map(key => {
+    const d = all[key];
+    if (!d || !d.events) return '';
+    return buildDayCard(key, d);
+  }).join('');
+
+  // Expandir al click
+  cont.querySelectorAll('.hist-day').forEach(el => {
+    el.addEventListener('click', () => {
+      const body = el.querySelector('.hist-day-events');
+      body.classList.toggle('open');
+    });
+  });
+}
+
+function buildDayCard(key, d) {
+  const events = d.events || [];
+  const eEnt  = events.find(e=>e.type==='entrada');
+  const eSal  = events.find(e=>e.type==='salida');
+  const eMed  = events.find(e=>e.type==='medico');
+  const eSalida = eSal || eMed;
+  if (!eEnt) return '';
+
+  const entMin = tsToMin(eEnt.ts);
+  const salMs  = eSalida ? eSalida.ts : null;
+
+  // Horario del día histórico
+  const [y,mo,da] = key.split('-').map(Number);
+  const dayDate = new Date(y,mo-1,da);
+  const hDia = getHorario(dayDate);
+  const fecha = dayDate.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+
+  // Bolsa: base del día + minutos antes del mínimo
+  const adelanto = Math.max(0, hDia.minEntrada - entMin);
+  const bolsaDia = hDia.bolsaMin + adelanto;
+
+  // Calcular pausas del día
+  let comidaMin=0, breaksMin=0;
+  const cIni = events.find(e=>e.type==='comida_ini');
+  const cFin = events.find(e=>e.type==='comida_fin');
+  if (cIni) {
+    const endTs = cFin ? cFin.ts : (salMs || cIni.ts);
+    comidaMin = Math.max(0,(endTs-cIni.ts)/60000);
+  }
+  const bInis = events.filter(e=>e.type==='break_ini');
+  const bFins = events.filter(e=>e.type==='break_fin');
+  bInis.forEach((ini,i)=>{
+    const fin = bFins[i];
+    const endTs = fin ? fin.ts : (salMs || ini.ts);
+    breaksMin += Math.max(0,(endTs-ini.ts)/60000);
+  });
+  const totalPausas = comidaMin+breaksMin;
+  const pausaExtra  = Math.max(0,totalPausas-bolsaDia);
+
+  let trabajado = 0;
+  if (eSal) {
+    const salMin = tsToMin(salMs);
+    trabajado = Math.max(0, salMin - entMin - totalPausas);
+  }
+
+  const salPrev = Math.max(entMin + hDia.jornadaMin + bolsaDia + pausaExtra, hDia.minSalida);
+
+  // Pills
+  const pillTrabajado = `<span class="pill ok">${fmtHM(trabajado)} trab.</span>`;
+  const pillPausas    = totalPausas>0 ? `<span class="pill ${pausaExtra>0?'bad':'ok'}">${Math.round(totalPausas)}m pausas</span>` : '';
+  const pillAdelanto  = adelanto>0 ? `<span class="pill ok">+${Math.round(adelanto)}m bolsa</span>` : '';
+  const pillSalida    = eSal
+    ? `<span class="pill ok">Salida ${toHM(eSal.ts)}</span>`
+    : eMed
+      ? `<span class="pill" style="border-color:rgba(167,139,250,.3);color:#a78bfa">🏥 Médico ${toHM(eMed.ts)}</span>`
+      : `<span class="pill warn">Sin salida</span>`;
+
+  // Eventos
+  const evHtml = events.map(e => {
+    const m = eventMeta[e.type]||{color:'#fff',label:e.type};
+    return `<div class="event-item">
+      <span class="event-dot" style="background:${m.color}"></span>
+      <span class="event-time">${toHM(e.ts)}</span>
+      <span class="event-label">${m.label}</span>
+    </div>`;
+  }).join('');
+
+  return `<div class="hist-day">
+    <div class="hist-day-header">
+      <span class="hist-day-date">${fecha}</span>
+      <span class="hist-day-sum">${eEnt?toHM(eEnt.ts):'--'} → ${eSal?toHM(eSal.ts):'--'}</span>
+    </div>
+    <div class="hist-day-pills">${pillTrabajado}${pillPausas}${pillAdelanto}${pillSalida}</div>
+    <div class="hist-day-events">${evHtml}</div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+loadToday();
+renderAll();
+setInterval(renderAll, 1000);
+</script>
+<script>
+// ── PWA Service Worker (inline via blob) ──────────────────────
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE = 'jornada-v1';
+    self.addEventListener('install', e => {
+      e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
+      self.skipWaiting();
+    });
+    self.addEventListener('activate', e => {
+      e.waitUntil(clients.claim());
+    });
+    self.addEventListener('fetch', e => {
+      e.respondWith(
+        caches.match(e.request).then(r => r || fetch(e.request).catch(() => caches.match('./')))
+      );
+    });
+  `;
+  const blob = new Blob([swCode], { type: 'application/javascript' });
+  const swUrl = URL.createObjectURL(blob);
+  navigator.serviceWorker.register(swUrl).catch(() => {});
+}
+</script>
+</body>
+</html>
