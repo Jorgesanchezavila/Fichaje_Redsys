@@ -50,8 +50,8 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
 /* ── Display principal ── */
 .display-card{
   background:var(--surface);border:1px solid var(--border);border-radius:20px;
-  padding:24px 20px;width:100%;max-width:460px;margin-bottom:14px;
-  text-align:center;position:relative;overflow:hidden
+  padding:20px;width:100%;max-width:460px;margin-bottom:10px;
+  text-align:center;position:relative;
 }
 .display-card::before{
   content:'';position:absolute;top:0;left:0;right:0;height:3px;
@@ -72,13 +72,20 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
 .progress-bar.warn{background:linear-gradient(90deg,var(--warn),var(--accent2))}
 .progress-bar.done{background:linear-gradient(90deg,var(--success),#16a34a)}
 .exit-info{
-  margin-top:4px;background:rgba(0,0,0,.25);border:1px solid rgba(227,6,19,.25);
-  border-radius:12px;padding:12px 16px;
+  width:100%;max-width:460px;
+  background:var(--surface);border:2px solid rgba(227,6,19,.35);
+  border-radius:16px;padding:16px 20px;margin-bottom:10px;
+  text-align:center;position:relative;overflow:visible;
 }
-.exit-info-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:2px}
-.exit-info-time{font-family:'Space Mono',monospace;font-size:44px;font-weight:700;
-  color:var(--accent);letter-spacing:-2px;line-height:1;transition:color .3s}
-.exit-info-sub{font-size:11px;color:var(--muted);margin-top:4px}
+.exit-info::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,var(--red-dark),var(--red-primary));
+  border-radius:16px 16px 0 0;
+}
+.exit-info-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:6px}
+.exit-info-time{font-family:'Space Mono',monospace;font-size:56px;font-weight:700;
+  color:var(--accent);letter-spacing:-3px;line-height:1;transition:color .3s}
+.exit-info-sub{font-size:12px;color:var(--muted);margin-top:6px}
 
 /* ── Stats ── */
 .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;max-width:460px;margin-bottom:14px}
@@ -269,15 +276,16 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
 <div class="now-time" id="nowTime">—</div>
 
 <!-- PANTALLA PRINCIPAL -->
+<div class="exit-info">
+  <div class="exit-info-label">Salida prevista</div>
+  <div class="exit-info-time" id="exitTime">--:--</div>
+  <div class="exit-info-sub" id="statExitSub">Pulsa ENTRADA para comenzar</div>
+</div>
+
 <div class="display-card" id="displayCard">
-  <div class="status-label" id="statusLabel">Pulsa ENTRADA para comenzar</div>
   <div class="time-big accent" id="timeBig">--:--:--</div>
+  <div class="status-label" id="statusLabel"></div>
   <div class="progress-track"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
-  <div class="exit-info">
-    <div class="exit-info-label">Salida prevista</div>
-    <div class="exit-info-time" id="exitTime">--:--</div>
-    <div class="exit-info-sub" id="statExitSub">—</div>
-  </div>
 </div>
 
 <!-- STATS pequeños -->
@@ -694,14 +702,13 @@ function renderAll() {
 
   // ── Cálculos ──
   if (!entered) {
-    document.getElementById('timeBig').textContent  = '--:--:--';
-    document.getElementById('timeBig').className    = 'time-big accent';
-    document.getElementById('statusLabel').textContent = 'Pulsa ENTRADA para comenzar';
     document.getElementById('exitTime').textContent = '--:--';
+    document.getElementById('statExitSub').textContent = 'Pulsa ENTRADA para comenzar';
+    document.getElementById('timeBig').textContent = '--:--:--';
+    document.getElementById('timeBig').className = 'time-big accent';
+    document.getElementById('statusLabel').textContent = '';
     document.getElementById('statWorked').textContent = '--';
     document.getElementById('statPausas').textContent = '0m/'+ H.bolsaMin +'m';
-    document.getElementById('exitTime').textContent = '--:--';
-    document.getElementById('statExitSub').textContent = '—';
     document.getElementById('progressBar').style.width = '0%';
     document.getElementById('displayCard').className = 'display-card';
     document.getElementById('recoverBox').className = 'recover-box';
@@ -737,64 +744,53 @@ function renderAll() {
 
   const todayBase = new Date(); todayBase.setHours(0,0,0,0);
   const salidaTs  = todayBase.getTime() + salida * 60000;
-  document.getElementById('exitTime').textContent = toHM(salidaTs);
+  const medicoEv  = getLastEvent('medico');
+
+  // ── Hora de salida ──
   document.getElementById('exitTime').textContent = toHM(salidaTs);
   document.getElementById('statExitSub').textContent = restante > 0
     ? `Faltan ${fmtHM(restante)}`
-    : restante > -60 ? '✓ Puedes salir' : '✓ Jornada completada';
+    : '✓ Puedes salir';
 
+  // ── Stats ──
   document.getElementById('statWorked').textContent = fmtHM(trabajado);
   document.getElementById('statPausas').textContent = Math.round(totalPausas)+'m/'+Math.round(bolsaTotal)+'m';
   document.getElementById('progressBar').style.width = progreso+'%';
 
-  const exitEl = document.getElementById('exitTime');
+  // ── Color del bloque salida ──
+  const exitEl  = document.getElementById('exitTime');
   const exitBox = exitEl.closest('.exit-info');
-  if (medicoEv) {
-    exitEl.style.color = '#a78bfa';
-    exitBox.style.borderColor = 'rgba(139,92,246,.4)';
-  } else if (restante <= 0) {
-    exitEl.style.color = 'var(--success)';
-    exitBox.style.borderColor = 'rgba(34,197,94,.4)';
-  } else if (restante <= 30) {
-    exitEl.style.color = 'var(--warn)';
-    exitBox.style.borderColor = 'rgba(245,158,11,.4)';
-  } else {
-    exitEl.style.color = 'var(--accent)';
-    exitBox.style.borderColor = 'rgba(227,6,19,.25)';
-  }
+  if (medicoEv)        { exitEl.style.color='#a78bfa'; exitBox.style.borderColor='rgba(139,92,246,.4)'; }
+  else if (restante<=0){ exitEl.style.color='var(--success)'; exitBox.style.borderColor='rgba(34,197,94,.4)'; }
+  else if (restante<=30){ exitEl.style.color='var(--warn)'; exitBox.style.borderColor='rgba(245,158,11,.4)'; }
+  else                 { exitEl.style.color='var(--accent)'; exitBox.style.borderColor='rgba(227,6,19,.25)'; }
 
   if (pausaExtra > 0)
     showAlert('⚠️ Bolsa superada en '+Math.round(pausaExtra)+'min → salida retrasada', true);
 
-  // ── Caja de recuperación médico ──
-  const medicoEv = getLastEvent('medico');
+  // ── Caja recuperación médico ──
   const recoverBox = document.getElementById('recoverBox');
   if (medicoEv) {
-    const medicoMin = tsToMin(medicoEv.ts);
-    // Tiempo que le falta desde que salió hasta su salida prevista
-    const recuperar = Math.max(0, salida - medicoMin);
+    const recuperar = Math.max(0, salida - tsToMin(medicoEv.ts));
     document.getElementById('recoverTime').textContent = fmtHM(recuperar);
     document.getElementById('recoverSub').textContent =
-      `Saliste a las ${toHM(medicoEv.ts)} — salida prevista ${toHM(new Date().setHours(0,0,0,0) + salida*60000 - salida*60000 + salida*60000)}`;
-    const todayB = new Date(); todayB.setHours(0,0,0,0);
-    document.getElementById('recoverSub').textContent =
-      `Saliste a las ${toHM(medicoEv.ts)} · Salida prevista: ${toHM(todayB.getTime()+salida*60000)}`;
+      `Saliste a las ${toHM(medicoEv.ts)} · Salida prevista: ${toHM(salidaTs)}`;
     recoverBox.className = 'recover-box visible';
   } else {
     recoverBox.className = 'recover-box';
   }
 
+  // ── Display principal ──
   const timeBig     = document.getElementById('timeBig');
   const statusLabel = document.getElementById('statusLabel');
   const progressBar = document.getElementById('progressBar');
   const displayCard = document.getElementById('displayCard');
 
   if (medicoEv) {
-    const medicoMin = tsToMin(medicoEv.ts);
-    const recuperar = Math.max(0, salida - medicoMin);
+    const recuperar = Math.max(0, salida - tsToMin(medicoEv.ts));
     timeBig.className = 'time-big'; timeBig.style.color = '#a78bfa';
-    timeBig.textContent = fmtHM(recuperar).replace('h ',':').replace('m','');
-    statusLabel.textContent = '🏥 Salida anticipada — tiempo a recuperar';
+    timeBig.textContent = toHMS(recuperar * 60);
+    statusLabel.textContent = '🏥 Tiempo a recuperar';
     displayCard.className = 'display-card';
     progressBar.className = 'progress-bar';
     progressBar.style.background = 'linear-gradient(90deg,#7c3aed,#a78bfa)';
@@ -1003,7 +999,7 @@ setInterval(renderAll, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v1';
+    const CACHE = 'jornada-v5';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
