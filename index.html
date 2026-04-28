@@ -204,6 +204,27 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
 .hist-empty{font-size:12px;color:var(--muted);text-align:center;padding:16px 0}
 
 .nota{font-size:11px;color:var(--muted);text-align:center;max-width:460px;line-height:1.7;margin-top:4px}
+
+/* Editar hora entrada */
+.edit-entrada-row{
+  background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+  padding:10px 14px;margin-top:10px;animation:fadeIn .2s ease;
+}
+.edit-entrada-label{font-size:11px;color:var(--muted);margin-bottom:8px;letter-spacing:.5px}
+.edit-entrada-inner{display:flex;gap:8px;align-items:center}
+.edit-entrada-inner input[type="time"]{
+  flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;
+  color:var(--text);font-family:'Space Mono',monospace;font-size:20px;
+  padding:8px 12px;outline:none;-webkit-appearance:none;transition:border-color .2s;
+}
+.edit-entrada-inner input[type="time"]:focus{border-color:var(--accent)}
+.edit-entrada-inner input[type="time"]::-webkit-calendar-picker-indicator{filter:invert(.5);cursor:pointer}
+.btn-edit-confirm{
+  background:var(--accent);border:none;border-radius:8px;
+  font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;
+  padding:8px 14px;cursor:pointer;white-space:nowrap;transition:background .15s;color:#111;
+}
+.btn-edit-confirm:hover{background:var(--red-dark);color:#fff}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
 
 /* ── Modal confirmación ── */
@@ -311,6 +332,16 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
       <span class="btn-sub" id="lblSalida">sin fichar</span>
     </button>
   </div>
+
+  <!-- Editar hora de entrada -->
+  <div class="edit-entrada-row" id="editEntradaRow" style="display:none">
+    <div class="edit-entrada-label">✏️ Hora de entrada registrada</div>
+    <div class="edit-entrada-inner">
+      <input type="time" id="editEntradaInput">
+      <button class="btn-edit-confirm" onclick="confirmEditEntrada()">Guardar</button>
+    </div>
+  </div>
+
   <button class="btn-medico" id="btnMedico" onclick="fichMedico()" disabled>
     <span class="btn-icon">🏥</span>
     <span>SALIDA MÉDICO / ANTICIPADA</span>
@@ -400,10 +431,10 @@ const STORAGE_KEY = 'jornada_v2';
 function getHorario(date) {
   const dow = (date || new Date()).getDay();
   if (dow === 5) { // Viernes
-    return { jornadaMin: 6*60, bolsaMin: 30, minEntrada: 7*60+30, minSalida: 14*60, label: 'Jornada viernes' };
+    return { jornadaMin: 6*60, bolsaMin: 30, comidaOblig: 15, minEntrada: 7*60+30, minSalida: 14*60, label: 'Jornada viernes' };
   }
   // Lunes–Jueves (y por si acaso sábado/domingo)
-  return { jornadaMin: 8*60+15, bolsaMin: 60, minEntrada: 7*60+45, minSalida: 17*60, label: 'Jornada L–J' };
+  return { jornadaMin: 8*60+15, bolsaMin: 60, comidaOblig: 30, minEntrada: 7*60+45, minSalida: 17*60, label: 'Jornada L–J' };
 }
 
 // Horario del día actual (se recalcula en cada render)
@@ -692,6 +723,19 @@ function renderAll() {
 
   const eEv = getLastEvent('entrada');
   document.getElementById('lblEntrada').textContent = eEv ? toHM(eEv.ts) : 'sin fichar';
+  // Mostrar/ocultar fila de edición
+  const editRow = document.getElementById('editEntradaRow');
+  if (entered && !exited) {
+    editRow.style.display = 'block';
+    // Pre-rellenar input si no está abierto por el usuario
+    const inp = document.getElementById('editEntradaInput');
+    if (!inp.dataset.userEditing && eEv) {
+      const d = new Date(eEv.ts);
+      inp.value = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    }
+  } else {
+    editRow.style.display = 'none';
+  }
   const sEv = getLastEvent('salida') || getLastEvent('medico');
   document.getElementById('lblSalida').textContent  = sEv ? toHM(sEv.ts) : 'sin fichar';
 
@@ -721,23 +765,28 @@ function renderAll() {
   const entMin  = tsToMin(entTs);
   const { comida, breaks, total: totalPausas } = calcPausasMin(nowMs);
   const bolsaExtra = calcBolsaExtra();
-  const bolsaTotal = H.bolsaMin + bolsaExtra;
-  const pausaExtra = Math.max(0, totalPausas - bolsaTotal);
+  const bolsaTotal = H.bolsaMin + bolsaExtra;   // bolsa completa (incluyendo los 30 obligatorios)
+  const bolsaLibre = H.bolsaMin - H.comidaOblig; // minutos de bolsa realmente libres (L-J: 30m)
+  const pausaLibreUsada = Math.max(0, totalPausas - H.comidaOblig + bolsaExtra); // pausas que consumen bolsa libre
+  const pausaExtra = Math.max(0, totalPausas - bolsaTotal); // tiempo que supera la bolsa entera → retrasa salida
   const bolsaRest  = Math.max(0, bolsaTotal - totalPausas);
 
   // Bolsa sub label
   const subEl = document.getElementById('bolsaSub');
+  const bolsaLibreRest = Math.max(0, bolsaLibre + bolsaExtra - Math.max(0, totalPausas - H.comidaOblig));
   if (bolsaExtra > 0) {
-    subEl.textContent = `Bolsa ampliada: ${H.bolsaMin}m + ${Math.round(bolsaExtra)}m por adelanto`;
+    subEl.textContent = `${Math.round(bolsaLibreRest)}m libres restantes (+${Math.round(bolsaExtra)}m adelanto)`;
     subEl.style.color = 'var(--accent)';
   } else {
-    subEl.textContent = `Comida + breaks comparten ${H.bolsaMin}m`;
+    subEl.textContent = `${Math.round(bolsaLibreRest)}m libres (30m obligatorios + 30m opcionales)`;
     subEl.style.color = '';
   }
 
   updateBolsa(bolsaRest, totalPausas, bolsaTotal);
 
-  let salida = Math.max(entMin + H.jornadaMin + bolsaTotal + pausaExtra, H.minSalida);
+  // Salida = entrada + jornada + comida obligatoria + tiempo de bolsa libre consumido más allá de la bolsa
+  // La comida obligatoria (30m) siempre cuenta. Los 30m libres no retrasan si no se superan.
+  let salida = Math.max(entMin + H.jornadaMin + H.comidaOblig + pausaExtra, H.minSalida);
   const trabajado = Math.max(0, nowMin - entMin - totalPausas);
   const restante  = salida - nowMin;
   const progreso  = Math.min(100, Math.max(0,(trabajado/H.jornadaMin)*100));
@@ -843,7 +892,38 @@ function updateBolsa(bolsaRest, totalPausas, bolsaTotal) {
   else                  { bar.style.background='linear-gradient(90deg,var(--red-dark),var(--red-primary))'; val.style.color='var(--accent)'; }
 }
 
-function toggleEvents() {
+function confirmEditEntrada() {
+  const val = document.getElementById('editEntradaInput').value;
+  if (!val) return;
+  const [h, m] = val.split(':').map(Number);
+  const entMin = h * 60 + m;
+  if (entMin < H.minEntrada) {
+    showAlert(`⚠️ Hora mínima de entrada: ${toHM(new Date().setHours(0,0,0,0) + H.minEntrada*60000)}`, false);
+    return;
+  }
+  // Actualizar timestamp del evento de entrada
+  const eEnt = getLastEvent('entrada');
+  if (!eEnt) return;
+  const d = new Date(eEnt.ts);
+  d.setHours(h, m, 0, 0);
+  eEnt.ts = d.getTime();
+  saveToday();
+  renderAll();
+}
+
+function toggleEditEntrada() {
+  const row = document.getElementById('editEntradaRow');
+  const isOpen = row.style.display !== 'none';
+  row.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) {
+    const eEnt = getLastEvent('entrada');
+    if (eEnt) {
+      const d = new Date(eEnt.ts);
+      document.getElementById('editEntradaInput').value =
+        String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    }
+  }
+}
   const log = document.getElementById('eventsLog');
   const btn = document.getElementById('btnEventsToggle');
   const isOpen = log.style.display !== 'none';
@@ -956,7 +1036,7 @@ function buildDayCard(key, d) {
     trabajado = Math.max(0, salMin - entMin - totalPausas);
   }
 
-  const salPrev = Math.max(entMin + hDia.jornadaMin + bolsaDia + pausaExtra, hDia.minSalida);
+  const salPrev = Math.max(entMin + hDia.jornadaMin + hDia.comidaOblig + pausaExtra, hDia.minSalida);
 
   // Pills
   const pillTrabajado = `<span class="pill ok">${fmtHM(trabajado)} trab.</span>`;
@@ -999,7 +1079,7 @@ setInterval(renderAll, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v5';
+    const CACHE = 'jornada-v7';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
