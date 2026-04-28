@@ -615,7 +615,6 @@ function _doFichEntrada() {
   const ts = nowTs();
   const entMin = tsToMin(ts);
   if (entMin < H.minEntrada) {
-    showAlert(`⚠️ Entrada mínima hoy: ${toHM(new Date().setHours(0,0,0,0) + H.minEntrada*60000)}`, false);
     const todayB = new Date(); todayB.setHours(0,0,0,0);
     showAlert(`⚠️ Entrada mínima hoy: ${toHM(todayB.getTime() + H.minEntrada*60000)}`, false);
     return;
@@ -924,6 +923,8 @@ function toggleEditEntrada() {
     }
   }
 }
+
+function toggleEvents() {
   const log = document.getElementById('eventsLog');
   const btn = document.getElementById('btnEventsToggle');
   const isOpen = log.style.display !== 'none';
@@ -1079,7 +1080,7 @@ setInterval(renderAll, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v7';
+    const CACHE = 'jornada-v8';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
