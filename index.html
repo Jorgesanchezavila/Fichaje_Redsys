@@ -720,14 +720,15 @@ function renderAll() {
   const editRow = document.getElementById('editEntradaRow');
   if (entered && !exited) {
     editRow.style.display = 'block';
-    // Pre-rellenar input si no está abierto por el usuario
+    // Solo pre-rellenar si el campo está vacío (no machacar lo que escribe el usuario)
     const inp = document.getElementById('editEntradaInput');
-    if (!inp.dataset.userEditing && eEv) {
+    if (!inp.value && eEv) {
       const d = new Date(eEv.ts);
       inp.value = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
     }
   } else {
     editRow.style.display = 'none';
+    document.getElementById('editEntradaInput').value = '';
   }
   const sEv = getLastEvent('salida') || getLastEvent('medico');
   document.getElementById('lblSalida').textContent  = sEv ? toHM(sEv.ts) : 'sin fichar';
@@ -894,6 +895,8 @@ function confirmEditEntrada() {
   const d = new Date(eEnt.ts);
   d.setHours(h, m, 0, 0);
   eEnt.ts = d.getTime();
+  // Limpiar campo para que renderAll lo rellene con la hora ya actualizada
+  document.getElementById('editEntradaInput').value = '';
   saveToday();
   renderAll();
 }
@@ -1068,7 +1071,7 @@ setInterval(renderAll, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v9';
+    const CACHE = 'jornada-v10';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
