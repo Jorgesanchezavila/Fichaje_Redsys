@@ -613,12 +613,6 @@ function fichEntrada() {
 function _doFichEntrada() {
   if (hasEvent('entrada')) return;
   const ts = nowTs();
-  const entMin = tsToMin(ts);
-  if (entMin < H.minEntrada) {
-    const todayB = new Date(); todayB.setHours(0,0,0,0);
-    showAlert(`⚠️ Entrada mínima hoy: ${toHM(todayB.getTime() + H.minEntrada*60000)}`, false);
-    return;
-  }
   state.events.push({ type:'entrada', ts });
   saveToday(); renderAll();
 }
@@ -895,12 +889,6 @@ function confirmEditEntrada() {
   const val = document.getElementById('editEntradaInput').value;
   if (!val) return;
   const [h, m] = val.split(':').map(Number);
-  const entMin = h * 60 + m;
-  if (entMin < H.minEntrada) {
-    showAlert(`⚠️ Hora mínima de entrada: ${toHM(new Date().setHours(0,0,0,0) + H.minEntrada*60000)}`, false);
-    return;
-  }
-  // Actualizar timestamp del evento de entrada
   const eEnt = getLastEvent('entrada');
   if (!eEnt) return;
   const d = new Date(eEnt.ts);
@@ -1080,7 +1068,7 @@ setInterval(renderAll, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v8';
+    const CACHE = 'jornada-v9';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
