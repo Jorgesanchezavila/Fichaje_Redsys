@@ -355,7 +355,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
 
 <!-- BOLSA + PAUSAS -->
 <div class="card">
-  <div class="card-title">⬛ Bolsa de pausas — 1h total</div>
+  <div class="card-title">⬛ Bolsa de pausas — <span id="bolsaCardTitle">1h total</span></div>
   <div class="bolsa-box">
     <div class="bolsa-row">
       <span class="bolsa-lbl">Bolsa disponible</span>
@@ -469,6 +469,79 @@ function loadToday() {
   const all = loadStorage();
   const t = all[todayKey()];
   state = (t && t.events) ? t : { events:[] };
+}
+
+// ── Bolsa semanal acumulada ─────────────────────────────────────
+// Clave semana: año + número de semana ISO
+function weekKey(date) {
+  const d = date ? new Date(date) : new Date();
+  const jan4 = new Date(d.getFullYear(), 0, 4);
+  const startOfWeek = new Date(jan4);
+  startOfWeek.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+  const diff = d - startOfWeek;
+  const week = Math.floor(diff / (7 * 86400000)) + 1;
+  return `week_${d.getFullYear()}_${String(week).padStart(2,'0')}`;
+}
+
+// Calcula minutos sobrantes de un día completado
+function calcSobranteDia(dayData, dayDate) {
+  const events = dayData.events || [];
+  const eEnt = events.find(e => e.type === 'entrada');
+  const eSal = events.find(e => e.type === 'salida') || events.find(e => e.type === 'medico');
+  if (!eEnt || !eSal) return 0;
+
+  const hDia = getHorario(new Date(dayDate));
+  const entMin = tsToMin(eEnt.ts);
+  const salMs = eSal.ts;
+
+  // Calcular pausas del día
+  let comidaMin = 0;
+  const cIni = events.find(e => e.type === 'comida_ini');
+  const cFin = events.find(e => e.type === 'comida_fin');
+  if (cIni) comidaMin = Math.max(0, ((cFin ? cFin.ts : salMs) - cIni.ts) / 60000);
+  let breaksMin = 0;
+  const bInis = events.filter(e => e.type === 'break_ini');
+  const bFins = events.filter(e => e.type === 'break_fin');
+  bInis.forEach((ini, i) => {
+    const fin = bFins[i];
+    breaksMin += Math.max(0, ((fin ? fin.ts : salMs) - ini.ts) / 60000);
+  });
+  const totalPausas = comidaMin + breaksMin;
+
+  // Adelanto por entrada antes del mínimo
+  const bolsaExtra = Math.max(0, hDia.minEntrada - entMin);
+  const bolsaTotal = hDia.bolsaMin + bolsaExtra;
+  const bolsaLibre = hDia.bolsaMin - hDia.comidaOblig + bolsaExtra; // 30m + adelanto
+
+  // Pausas libres usadas (lo que supera la comida obligatoria)
+  const pausasLibresUsadas = Math.max(0, totalPausas - hDia.comidaOblig);
+
+  // Sobrante = bolsa libre - pausas libres usadas (mínimo 0)
+  return Math.max(0, bolsaLibre - pausasLibresUsadas);
+}
+
+// Devuelve minutos acumulados de la semana actual (sin contar hoy)
+function getBolsaSemanal() {
+  const all = loadStorage();
+  const today = todayKey();
+  const now = new Date();
+  const dow = now.getDay(); // 0=Dom, 1=Lun, ...
+
+  // Si es lunes, la bolsa semanal empieza de 0
+  if (dow === 1) return 0;
+
+  // Recorrer días de esta semana (lunes hasta ayer)
+  let acum = 0;
+  const wk = weekKey(now);
+  for (const key of Object.keys(all)) {
+    if (key === today || key.startsWith('week_')) continue;
+    const [y, mo, da] = key.split('-').map(Number);
+    const d = new Date(y, mo - 1, da);
+    if (weekKey(d) !== wk) continue; // solo días de esta semana
+    if (d >= now) continue; // solo días pasados
+    acum += calcSobranteDia(all[key], key);
+  }
+  return Math.round(acum);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -750,6 +823,11 @@ function renderAll() {
     document.getElementById('progressBar').style.width = '0%';
     document.getElementById('displayCard').className = 'display-card';
     document.getElementById('recoverBox').className = 'recover-box';
+    const bsem0 = getBolsaSemanal();
+    const bct0 = document.getElementById('bolsaCardTitle');
+    if (bct0) bct0.textContent = bsem0 > 0 ? `1h + 📦 ${bsem0}m acumulados` : '1h total';
+    const subEl0 = document.getElementById('bolsaSub');
+    if (subEl0 && bsem0 > 0) { subEl0.textContent = `📦 ${bsem0}m acumulados esta semana`; subEl0.style.color='var(--accent)'; }
     renderEvents();
     updateBolsa(H.bolsaMin, 0, H.bolsaMin);
     return;
@@ -758,29 +836,34 @@ function renderAll() {
   const entTs   = getLastEvent('entrada').ts;
   const entMin  = tsToMin(entTs);
   const { comida, breaks, total: totalPausas } = calcPausasMin(nowMs);
-  const bolsaExtra = calcBolsaExtra();
-  const bolsaTotal = H.bolsaMin + bolsaExtra;   // bolsa completa (incluyendo los 30 obligatorios)
-  const bolsaLibre = H.bolsaMin - H.comidaOblig; // minutos de bolsa realmente libres (L-J: 30m)
-  const pausaLibreUsada = Math.max(0, totalPausas - H.comidaOblig + bolsaExtra); // pausas que consumen bolsa libre
-  const pausaExtra = Math.max(0, totalPausas - bolsaTotal); // tiempo que supera la bolsa entera → retrasa salida
-  const bolsaRest  = Math.max(0, bolsaTotal - totalPausas);
+  const bolsaExtra   = calcBolsaExtra();
+  const bolsaSemanal = getBolsaSemanal(); // minutos acumulados de días anteriores esta semana
+  const bolsaTotal   = H.bolsaMin + bolsaExtra;
+  const bolsaLibre   = H.bolsaMin - H.comidaOblig + bolsaExtra; // 30m opcionales + adelanto
+  const pausaExtra   = Math.max(0, totalPausas - bolsaTotal);
+  const bolsaRest    = Math.max(0, bolsaTotal - totalPausas);
 
   // Bolsa sub label
   const subEl = document.getElementById('bolsaSub');
-  const bolsaLibreRest = Math.max(0, bolsaLibre + bolsaExtra - Math.max(0, totalPausas - H.comidaOblig));
-  if (bolsaExtra > 0) {
-    subEl.textContent = `${Math.round(bolsaLibreRest)}m libres restantes (+${Math.round(bolsaExtra)}m adelanto)`;
-    subEl.style.color = 'var(--accent)';
-  } else {
-    subEl.textContent = `${Math.round(bolsaLibreRest)}m libres (30m obligatorios + 30m opcionales)`;
-    subEl.style.color = '';
-  }
+  const bolsaLibreRest = Math.max(0, bolsaLibre - Math.max(0, totalPausas - H.comidaOblig));
+  let subTxt = `${Math.round(bolsaLibreRest)}m libres hoy`;
+  if (bolsaExtra > 0) subTxt += ` (+${Math.round(bolsaExtra)}m adelanto)`;
+  if (bolsaSemanal > 0) subTxt += ` · 📦 ${bolsaSemanal}m acumulados`;
+  subEl.textContent = subTxt;
+  subEl.style.color = (bolsaExtra > 0 || bolsaSemanal > 0) ? 'var(--accent)' : '';
 
   updateBolsa(bolsaRest, totalPausas, bolsaTotal);
 
-  // Salida = entrada + jornada + comida obligatoria + tiempo de bolsa libre consumido más allá de la bolsa
-  // La comida obligatoria (30m) siempre cuenta. Los 30m libres no retrasan si no se superan.
-  let salida = Math.max(entMin + H.jornadaMin + H.comidaOblig + pausaExtra, H.minSalida);
+  // Actualizar título tarjeta bolsa
+  const bct = document.getElementById('bolsaCardTitle');
+  if (bct) bct.textContent = bolsaSemanal > 0 ? `1h + 📦 ${bolsaSemanal}m acumulados` : '1h total';
+
+  // Salida = entrada + jornada + comida obligatoria + penalización - bolsa semanal acumulada
+  // La bolsa semanal adelanta la salida (pero nunca antes del mínimo)
+  let salida = Math.max(
+    entMin + H.jornadaMin + H.comidaOblig + pausaExtra - bolsaSemanal,
+    H.minSalida
+  );
   const trabajado = Math.max(0, nowMin - entMin - totalPausas);
   const restante  = salida - nowMin;
   const progreso  = Math.min(100, Math.max(0,(trabajado/H.jornadaMin)*100));
@@ -1034,6 +1117,8 @@ function buildDayCard(key, d) {
   const pillTrabajado = `<span class="pill ok">${fmtHM(trabajado)} trab.</span>`;
   const pillPausas    = totalPausas>0 ? `<span class="pill ${pausaExtra>0?'bad':'ok'}">${Math.round(totalPausas)}m pausas</span>` : '';
   const pillAdelanto  = adelanto>0 ? `<span class="pill ok">+${Math.round(adelanto)}m bolsa</span>` : '';
+  const sobrante = calcSobranteDia({events}, key);
+  const pillSobrante  = sobrante>0 ? `<span class="pill ok">📦 +${Math.round(sobrante)}m acumulados</span>` : '';
   const pillSalida    = eSal
     ? `<span class="pill ok">Salida ${toHM(eSal.ts)}</span>`
     : eMed
@@ -1055,7 +1140,7 @@ function buildDayCard(key, d) {
       <span class="hist-day-date">${fecha}</span>
       <span class="hist-day-sum">${eEnt?toHM(eEnt.ts):'--'} → ${eSal?toHM(eSal.ts):'--'}</span>
     </div>
-    <div class="hist-day-pills">${pillTrabajado}${pillPausas}${pillAdelanto}${pillSalida}</div>
+    <div class="hist-day-pills">${pillTrabajado}${pillPausas}${pillAdelanto}${pillSobrante}${pillSalida}</div>
     <div class="hist-day-events">${evHtml}</div>
   </div>`;
 }
@@ -1071,7 +1156,7 @@ setInterval(renderAll, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v10';
+    const CACHE = 'jornada-v11';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
