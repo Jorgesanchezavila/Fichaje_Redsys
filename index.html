@@ -483,44 +483,6 @@ function weekKey(date) {
   return `week_${d.getFullYear()}_${String(week).padStart(2,'0')}`;
 }
 
-// Calcula minutos sobrantes de un día completado
-function calcSobranteDia(dayData, dayDate) {
-  const events = dayData.events || [];
-  const eEnt = events.find(e => e.type === 'entrada');
-  const eSal = events.find(e => e.type === 'salida') || events.find(e => e.type === 'medico');
-  if (!eEnt || !eSal) return 0;
-
-  const hDia = getHorario(new Date(dayDate));
-  const entMin = tsToMin(eEnt.ts);
-  const salMs = eSal.ts;
-
-  // Calcular pausas del día
-  let comidaMin = 0;
-  const cIni = events.find(e => e.type === 'comida_ini');
-  const cFin = events.find(e => e.type === 'comida_fin');
-  if (cIni) comidaMin = Math.max(0, ((cFin ? cFin.ts : salMs) - cIni.ts) / 60000);
-  let breaksMin = 0;
-  const bInis = events.filter(e => e.type === 'break_ini');
-  const bFins = events.filter(e => e.type === 'break_fin');
-  bInis.forEach((ini, i) => {
-    const fin = bFins[i];
-    breaksMin += Math.max(0, ((fin ? fin.ts : salMs) - ini.ts) / 60000);
-  });
-  const totalPausas = comidaMin + breaksMin;
-
-  // Adelanto por entrada antes del mínimo
-  const bolsaExtra = Math.max(0, hDia.minEntrada - entMin);
-  const bolsaTotal = hDia.bolsaMin + bolsaExtra;
-  const bolsaLibre = hDia.bolsaMin - hDia.comidaOblig + bolsaExtra; // 30m + adelanto
-
-  // Pausas libres usadas (lo que supera la comida obligatoria)
-  const pausasLibresUsadas = Math.max(0, totalPausas - hDia.comidaOblig);
-
-  // Sobrante = bolsa libre - pausas libres usadas (mínimo 0)
-  return Math.max(0, bolsaLibre - pausasLibresUsadas);
-}
-
-// Devuelve minutos acumulados de la semana actual (sin contar hoy)
 function getBolsaSemanal() {
   const all = loadStorage();
   const today = todayKey();
@@ -530,18 +492,66 @@ function getBolsaSemanal() {
   // Si es lunes, la bolsa semanal empieza de 0
   if (dow === 1) return 0;
 
-  // Recorrer días de esta semana (lunes hasta ayer)
-  let acum = 0;
+  // Fecha de hoy a medianoche para comparar solo por día
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const wk = weekKey(now);
+
+  let acum = 0;
   for (const key of Object.keys(all)) {
     if (key === today || key.startsWith('week_')) continue;
-    const [y, mo, da] = key.split('-').map(Number);
-    const d = new Date(y, mo - 1, da);
-    if (weekKey(d) !== wk) continue; // solo días de esta semana
-    if (d >= now) continue; // solo días pasados
-    acum += calcSobranteDia(all[key], key);
+    const parts = key.split('-');
+    if (parts.length !== 3) continue;
+    const [y, mo, da] = parts.map(Number);
+    const d = new Date(y, mo - 1, da); // medianoche del día
+    if (weekKey(d) !== wk) continue;   // solo días de esta semana
+    if (d >= todayMidnight) continue;  // solo días anteriores a hoy
+    const s = calcSobranteDia(all[key], key);
+    acum += s;
   }
   return Math.round(acum);
+}
+
+// Calcula minutos sobrantes de un día completado
+function calcSobranteDia(dayData, dayDate) {
+  const events = (dayData && dayData.events) ? dayData.events : [];
+  const eEnt = events.find(e => e.type === 'entrada');
+  if (!eEnt) return 0; // sin entrada no hay sobrante
+
+  const hDia = getHorario(new Date(dayDate));
+
+  // Calcular pausas totales del día
+  // Usamos el timestamp de salida/medico como tope, o fin de jornada estimado si no hay
+  const eSal = events.find(e => e.type === 'salida') || events.find(e => e.type === 'medico');
+  const topeTs = eSal ? eSal.ts : eEnt.ts + (hDia.jornadaMin + hDia.bolsaMin) * 60000;
+
+  let comidaMin = 0;
+  const cIni = events.find(e => e.type === 'comida_ini');
+  const cFin = events.find(e => e.type === 'comida_fin');
+  if (cIni) {
+    const endTs = cFin ? Math.min(cFin.ts, topeTs) : topeTs;
+    comidaMin = Math.max(0, (endTs - cIni.ts) / 60000);
+  }
+
+  let breaksMin = 0;
+  const bInis = events.filter(e => e.type === 'break_ini');
+  const bFins = events.filter(e => e.type === 'break_fin');
+  bInis.forEach((ini, i) => {
+    const fin = bFins[i];
+    const endTs = fin ? Math.min(fin.ts, topeTs) : topeTs;
+    breaksMin += Math.max(0, (endTs - ini.ts) / 60000);
+  });
+  const totalPausas = comidaMin + breaksMin;
+
+  // Bolsa libre del día = 30m opcionales + adelanto por entrar antes del mínimo
+  const entMin = tsToMin(eEnt.ts);
+  const bolsaExtra = Math.max(0, hDia.minEntrada - entMin);
+  const bolsaLibre = (hDia.bolsaMin - hDia.comidaOblig) + bolsaExtra;
+
+  // Pausas libres usadas = todo lo que supera la comida obligatoria
+  const pausasLibresUsadas = Math.max(0, totalPausas - hDia.comidaOblig);
+
+  // Sobrante = bolsa libre no usada
+  return Math.max(0, bolsaLibre - pausasLibresUsadas);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1156,7 +1166,7 @@ setInterval(renderAll, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v11';
+    const CACHE = 'jornada-v12';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
