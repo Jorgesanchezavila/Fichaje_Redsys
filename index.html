@@ -342,6 +342,15 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     </div>
   </div>
 
+  <!-- Editar hora de salida -->
+  <div class="edit-entrada-row" id="editSalidaRow" style="display:none">
+    <div class="edit-entrada-label">✏️ Hora de salida registrada</div>
+    <div class="edit-entrada-inner">
+      <input type="time" id="editSalidaInput">
+      <button class="btn-edit-confirm" onclick="confirmEditSalida()">Guardar</button>
+    </div>
+  </div>
+
   <button class="btn-medico" id="btnMedico" onclick="fichMedico()" disabled>
     <span class="btn-icon">🏥</span>
     <span>SALIDA MÉDICO / ANTICIPADA</span>
@@ -799,11 +808,10 @@ function renderAll() {
 
   const eEv = getLastEvent('entrada');
   document.getElementById('lblEntrada').textContent = eEv ? toHM(eEv.ts) : 'sin fichar';
-  // Mostrar/ocultar fila de edición
+  // Mostrar/ocultar fila de edición entrada
   const editRow = document.getElementById('editEntradaRow');
   if (entered && !exited) {
     editRow.style.display = 'block';
-    // Solo pre-rellenar si el campo está vacío (no machacar lo que escribe el usuario)
     const inp = document.getElementById('editEntradaInput');
     if (!inp.value && eEv) {
       const d = new Date(eEv.ts);
@@ -813,6 +821,24 @@ function renderAll() {
     editRow.style.display = 'none';
     document.getElementById('editEntradaInput').value = '';
   }
+
+  // Mostrar/ocultar fila de edición salida (visible si hay entrada, para poder corregir o añadir salida)
+  const editSalidaRow = document.getElementById('editSalidaRow');
+  if (entered) {
+    editSalidaRow.style.display = 'block';
+    const inpS = document.getElementById('editSalidaInput');
+    if (!inpS.value) {
+      const sEvCur = getLastEvent('salida') || getLastEvent('medico');
+      if (sEvCur) {
+        const d = new Date(sEvCur.ts);
+        inpS.value = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+      }
+    }
+  } else {
+    editSalidaRow.style.display = 'none';
+    document.getElementById('editSalidaInput').value = '';
+  }
+
   const sEv = getLastEvent('salida') || getLastEvent('medico');
   document.getElementById('lblSalida').textContent  = sEv ? toHM(sEv.ts) : 'sin fichar';
 
@@ -981,6 +1007,24 @@ function updateBolsa(bolsaRest, totalPausas, bolsaTotal) {
   if (bolsaRest <= 0)  { bar.style.background='linear-gradient(90deg,var(--danger),var(--accent2))'; val.style.color='var(--danger)'; }
   else if (bolsaRest<=15){ bar.style.background='linear-gradient(90deg,var(--warn),var(--accent2))'; val.style.color='var(--warn)'; }
   else                  { bar.style.background='linear-gradient(90deg,var(--red-dark),var(--red-primary))'; val.style.color='var(--accent)'; }
+}
+
+function confirmEditSalida() {
+  const val = document.getElementById('editSalidaInput').value;
+  if (!val) return;
+  const [h, m] = val.split(':').map(Number);
+  const eSal = getLastEvent('salida') || getLastEvent('medico');
+  if (!eSal) {
+    // No hay salida aún — crear una nueva
+    const d = new Date(); d.setHours(h, m, 0, 0);
+    state.events.push({ type: 'salida', ts: d.getTime() });
+  } else {
+    const d = new Date(eSal.ts);
+    d.setHours(h, m, 0, 0);
+    eSal.ts = d.getTime();
+  }
+  document.getElementById('editSalidaInput').value = '';
+  saveToday(); renderAll(); renderHistorial();
 }
 
 function confirmEditEntrada() {
@@ -1170,7 +1214,7 @@ setInterval(renderAll, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v14';
+    const CACHE = 'jornada-v15';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
