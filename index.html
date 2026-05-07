@@ -868,10 +868,9 @@ function renderAll() {
   const bct = document.getElementById('bolsaCardTitle');
   if (bct) bct.textContent = bolsaSemanal > 0 ? `1h + 📦 ${bolsaSemanal}m acumulados` : '1h total';
 
-  // Salida = entrada + jornada + comida obligatoria + penalización - bolsa semanal acumulada
-  // La bolsa semanal adelanta la salida (pero nunca antes del mínimo)
+  // Salida = entrada + jornada + bolsa completa + penalización - acumulado semanal
   let salida = Math.max(
-    entMin + H.jornadaMin + H.comidaOblig + pausaExtra - bolsaSemanal,
+    entMin + H.jornadaMin + bolsaTotal + pausaExtra - bolsaSemanal,
     H.minSalida
   );
   const trabajado = Math.max(0, nowMin - entMin - totalPausas);
@@ -907,10 +906,14 @@ function renderAll() {
   // ── Caja recuperación médico ──
   const recoverBox = document.getElementById('recoverBox');
   if (medicoEv) {
-    const recuperar = Math.max(0, salida - tsToMin(medicoEv.ts));
+    // Tiempo que falta hasta salida prevista, descontando bolsa libre no consumida
+    const tiempoHastaFin = Math.max(0, salida - tsToMin(medicoEv.ts));
+    const recuperar = Math.max(0, tiempoHastaFin - bolsaLibreRest);
     document.getElementById('recoverTime').textContent = fmtHM(recuperar);
-    document.getElementById('recoverSub').textContent =
-      `Saliste a las ${toHM(medicoEv.ts)} · Salida prevista: ${toHM(salidaTs)}`;
+    const subMsg = recuperar === 0
+      ? `✓ Cubierto con bolsa — no necesitas recuperar`
+      : `Saliste ${toHM(medicoEv.ts)} · Prevista ${toHM(salidaTs)} · Bolsa libre: ${Math.round(bolsaLibreRest)}m`;
+    document.getElementById('recoverSub').textContent = subMsg;
     recoverBox.className = 'recover-box visible';
   } else {
     recoverBox.className = 'recover-box';
@@ -923,13 +926,14 @@ function renderAll() {
   const displayCard = document.getElementById('displayCard');
 
   if (medicoEv) {
-    const recuperar = Math.max(0, salida - tsToMin(medicoEv.ts));
-    timeBig.className = 'time-big'; timeBig.style.color = '#a78bfa';
-    timeBig.textContent = toHMS(recuperar * 60);
-    statusLabel.textContent = '🏥 Tiempo a recuperar';
-    displayCard.className = 'display-card';
-    progressBar.className = 'progress-bar';
-    progressBar.style.background = 'linear-gradient(90deg,#7c3aed,#a78bfa)';
+    const tiempoHastaFin2 = Math.max(0, salida - tsToMin(medicoEv.ts));
+    const recuperar2 = Math.max(0, tiempoHastaFin2 - bolsaLibreRest);
+    timeBig.className = 'time-big'; timeBig.style.color = recuperar2 === 0 ? 'var(--success)' : '#a78bfa';
+    timeBig.textContent = recuperar2 === 0 ? '✓ OK' : toHMS(recuperar2 * 60);
+    statusLabel.textContent = recuperar2 === 0 ? '🏥 Cubierto con bolsa' : '🏥 Tiempo a recuperar';
+    displayCard.className = recuperar2 === 0 ? 'display-card done-state' : 'display-card';
+    progressBar.className = recuperar2 === 0 ? 'progress-bar done' : 'progress-bar';
+    progressBar.style.background = recuperar2 === 0 ? '' : 'linear-gradient(90deg,#7c3aed,#a78bfa)';
   } else if (exited) {
     timeBig.className = 'time-big done'; timeBig.textContent = '✓ FIN';
     statusLabel.textContent = '¡Jornada completada!';
@@ -1121,7 +1125,7 @@ function buildDayCard(key, d) {
     trabajado = Math.max(0, salMin - entMin - totalPausas);
   }
 
-  const salPrev = Math.max(entMin + hDia.jornadaMin + hDia.comidaOblig + pausaExtra, hDia.minSalida);
+  const salPrev = Math.max(entMin + hDia.jornadaMin + bolsaDia + pausaExtra, hDia.minSalida);
 
   // Pills
   const pillTrabajado = `<span class="pill ok">${fmtHM(trabajado)} trab.</span>`;
@@ -1166,7 +1170,7 @@ setInterval(renderAll, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v12';
+    const CACHE = 'jornada-v14';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
