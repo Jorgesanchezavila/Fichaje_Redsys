@@ -894,9 +894,17 @@ function renderAll() {
   const bct = document.getElementById('bolsaCardTitle');
   if (bct) bct.textContent = bolsaSemanal > 0 ? `1h + 📦 ${bolsaSemanal}m acumulados` : '1h total';
 
-  // Salida = entrada + jornada + bolsa completa + penalización - acumulado semanal
+  // Pausas que realmente suman a la salida:
+  // - Siempre la comida obligatoria (30m)
+  // - Más las pausas libres usadas (lo que superes de los 30m obligatorios, hasta bolsaLibre)
+  // - Si superas bolsaTotal → penalización (pausaExtra)
+  const pausasLibresUsadas = Math.max(0, totalPausas - H.comidaOblig);
+  const pausasLibresEfectivas = Math.min(pausasLibresUsadas, bolsaLibre); // máx bolsaLibre
+  const pausasSumadasASalida = H.comidaOblig + pausasLibresEfectivas + pausaExtra;
+
+  // Salida = entrada + jornada + pausas efectivas - acumulado semanal
   let salida = Math.max(
-    entMin + H.jornadaMin + bolsaTotal + pausaExtra - bolsaSemanal,
+    entMin + H.jornadaMin + pausasSumadasASalida - bolsaSemanal,
     H.minSalida
   );
   const trabajado = Math.max(0, nowMin - entMin - totalPausas);
@@ -1214,7 +1222,7 @@ setInterval(renderAll, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v15';
+    const CACHE = 'jornada-v16';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
