@@ -365,6 +365,23 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
 <!-- BOLSA + PAUSAS -->
 <div class="card">
   <div class="card-title">⬛ Bolsa de pausas — <span id="bolsaCardTitle">1h total</span></div>
+
+  <!-- Editar comida olvidada -->
+  <div class="edit-entrada-row" id="editComidaRow" style="display:none">
+    <div class="edit-entrada-label">🍽 Registrar comida manualmente</div>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+      <div style="flex:1">
+        <div class="break-label" style="margin-bottom:3px">Inicio</div>
+        <input type="time" id="editComidaIni" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:16px;padding:7px 10px;width:100%;outline:none;-webkit-appearance:none;">
+      </div>
+      <div style="flex:1">
+        <div class="break-label" style="margin-bottom:3px">Fin</div>
+        <input type="time" id="editComidaFin" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:16px;padding:7px 10px;width:100%;outline:none;-webkit-appearance:none;">
+      </div>
+    </div>
+    <button class="btn-edit-confirm" style="width:100%" onclick="confirmEditComida()">Guardar comida</button>
+  </div>
+  <button class="btn-add" id="btnEditComida" onclick="toggleEditComida()" style="margin-bottom:10px;display:none">🍽 Registrar/editar comida</button>
   <div class="bolsa-box">
     <div class="bolsa-row">
       <span class="bolsa-lbl">Bolsa disponible</span>
@@ -839,6 +856,10 @@ function renderAll() {
     document.getElementById('editSalidaInput').value = '';
   }
 
+  // Botón editar comida (visible si hay entrada)
+  const btnEditComida = document.getElementById('btnEditComida');
+  if (btnEditComida) btnEditComida.style.display = entered ? 'flex' : 'none';
+
   const sEv = getLastEvent('salida') || getLastEvent('medico');
   document.getElementById('lblSalida').textContent  = sEv ? toHM(sEv.ts) : 'sin fichar';
 
@@ -894,13 +915,13 @@ function renderAll() {
   const bct = document.getElementById('bolsaCardTitle');
   if (bct) bct.textContent = bolsaSemanal > 0 ? `1h + 📦 ${bolsaSemanal}m acumulados` : '1h total';
 
-  // Pausas que realmente suman a la salida:
-  // - Siempre la comida obligatoria (30m)
-  // - Más las pausas libres usadas (lo que superes de los 30m obligatorios, hasta bolsaLibre)
-  // - Si superas bolsaTotal → penalización (pausaExtra)
-  const pausasLibresUsadas = Math.max(0, totalPausas - H.comidaOblig);
-  const pausasLibresEfectivas = Math.min(pausasLibresUsadas, bolsaLibre); // máx bolsaLibre
-  const pausasSumadasASalida = H.comidaOblig + pausasLibresEfectivas + pausaExtra;
+  // Pausas libres usadas = lo que supera la comida obligatoria (máx bolsaLibre)
+  const pausasLibresUsadas = Math.min(Math.max(0, totalPausas - H.comidaOblig), bolsaLibre);
+  // Bolsa libre no consumida → adelanta la salida
+  const bolsaLibreNoUsada  = bolsaLibre - pausasLibresUsadas;
+  // Penalización = lo que supera la bolsa total
+  // Total que suma a la salida: comida obligatoria + pausas libres usadas + penalización - bolsa no usada
+  const pausasSumadasASalida = H.comidaOblig + pausasLibresUsadas + pausaExtra - bolsaLibreNoUsada;
 
   // Salida = entrada + jornada + pausas efectivas - acumulado semanal
   let salida = Math.max(
@@ -1214,15 +1235,108 @@ function buildDayCard(key, d) {
 // ═══════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════
+// ── Editar comida manualmente ─────────────────────────────────
+function toggleEditComida() {
+  const row = document.getElementById('editComidaRow');
+  const isOpen = row.style.display !== 'none';
+  row.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) {
+    // Pre-rellenar si ya hay comida registrada
+    const cIni = getLastEvent('comida_ini');
+    const cFin = getLastEvent('comida_fin');
+    if (cIni) {
+      const d = new Date(cIni.ts);
+      document.getElementById('editComidaIni').value =
+        String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    }
+    if (cFin) {
+      const d = new Date(cFin.ts);
+      document.getElementById('editComidaFin').value =
+        String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    }
+  }
+}
+
+function confirmEditComida() {
+  const iniVal = document.getElementById('editComidaIni').value;
+  const finVal = document.getElementById('editComidaFin').value;
+  if (!iniVal) return;
+
+  // Eliminar eventos de comida existentes
+  state.events = state.events.filter(e => e.type !== 'comida_ini' && e.type !== 'comida_fin');
+
+  const base = new Date(); base.setSeconds(0,0);
+  const [ih, im] = iniVal.split(':').map(Number);
+  const dIni = new Date(base); dIni.setHours(ih, im, 0, 0);
+  state.events.push({ type:'comida_ini', ts: dIni.getTime() });
+
+  if (finVal) {
+    const [fh, fm] = finVal.split(':').map(Number);
+    const dFin = new Date(base); dFin.setHours(fh, fm, 0, 0);
+    state.events.push({ type:'comida_fin', ts: dFin.getTime() });
+  }
+
+  // Reordenar eventos cronológicamente
+  state.events.sort((a,b) => a.ts - b.ts);
+
+  document.getElementById('editComidaRow').style.display = 'none';
+  document.getElementById('editComidaIni').value = '';
+  document.getElementById('editComidaFin').value = '';
+  saveToday(); renderAll();
+}
+
+// ── Notificaciones push ───────────────────────────────────────
+let notifPermission = false;
+let lastNotifBreak = 0;
+let lastNotifComida = 0;
+const NOTIF_BREAK_INTERVAL  = 10 * 60 * 1000; // 10 min
+const NOTIF_COMIDA_INTERVAL = 30 * 60 * 1000; // 30 min
+
+async function requestNotifPermission() {
+  if (!('Notification' in window)) return;
+  const perm = await Notification.requestPermission();
+  notifPermission = perm === 'granted';
+}
+
+function sendNotif(title, body, icon) {
+  if (!notifPermission || document.visibilityState === 'visible') return;
+  try { new Notification(title, { body, icon: '⏱', silent: false }); } catch(e){}
+}
+
+function checkPauseNotifications() {
+  const now = Date.now();
+  if (isBreakOpen()) {
+    const lastIni = [...state.events].reverse().find(e => e.type === 'break_ini');
+    if (lastIni && now - lastNotifBreak > NOTIF_BREAK_INTERVAL) {
+      const dur = Math.round((now - lastIni.ts) / 60000);
+      sendNotif('⏱ Descanso activo', `Llevas ${dur} minutos en descanso. ¿Ya terminaste?`);
+      lastNotifBreak = now;
+    }
+  } else {
+    lastNotifBreak = 0;
+  }
+  if (isComidaOpen()) {
+    const cIni = getLastEvent('comida_ini');
+    if (cIni && now - lastNotifComida > NOTIF_COMIDA_INTERVAL) {
+      const dur = Math.round((now - cIni.ts) / 60000);
+      sendNotif('🍽 Comida activa', `Llevas ${dur} minutos en pausa de comida. ¿Ya volviste?`);
+      lastNotifComida = now;
+    }
+  } else {
+    lastNotifComida = 0;
+  }
+}
+
 loadToday();
 renderAll();
-setInterval(renderAll, 1000);
+requestNotifPermission();
+setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 </script>
 <script>
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v16';
+    const CACHE = 'jornada-v17';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
