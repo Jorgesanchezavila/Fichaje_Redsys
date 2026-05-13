@@ -291,7 +291,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <div class="logo-icon">⏱</div>
     <h1>CONTROL DE JORNADA</h1>
   </div>
-  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v19</span></div>
+  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v23</span></div>
 </header>
 
 <div class="now-time" id="nowTime">—</div>
@@ -537,16 +537,16 @@ function getBolsaSemanal() {
   return Math.round(acum);
 }
 
-// Calcula minutos sobrantes de un día completado
+// Calcula minutos acumulables de un día completado
 function calcSobranteDia(dayData, dayDate) {
   const events = (dayData && dayData.events) ? dayData.events : [];
   const eEnt = events.find(e => e.type === 'entrada');
-  if (!eEnt) return 0; // sin entrada no hay sobrante
+  if (!eEnt) return 0;
 
   const hDia = getHorario(new Date(dayDate));
+  const entMin = tsToMin(eEnt.ts);
 
   // Calcular pausas totales del día
-  // Usamos el timestamp de salida/medico como tope, o fin de jornada estimado si no hay
   const eSal = events.find(e => e.type === 'salida') || events.find(e => e.type === 'medico');
   const topeTs = eSal ? eSal.ts : eEnt.ts + (hDia.jornadaMin + hDia.bolsaMin) * 60000;
 
@@ -557,7 +557,6 @@ function calcSobranteDia(dayData, dayDate) {
     const endTs = cFin ? Math.min(cFin.ts, topeTs) : topeTs;
     comidaMin = Math.max(0, (endTs - cIni.ts) / 60000);
   }
-
   let breaksMin = 0;
   const bInis = events.filter(e => e.type === 'break_ini');
   const bFins = events.filter(e => e.type === 'break_fin');
@@ -568,16 +567,26 @@ function calcSobranteDia(dayData, dayDate) {
   });
   const totalPausas = comidaMin + breaksMin;
 
-  // Bolsa libre del día = 30m opcionales + adelanto por entrar antes del mínimo
-  const entMin = tsToMin(eEnt.ts);
+  // Bolsa libre = minutos antes de 07:45 (adelanto)
   const bolsaExtra = Math.max(0, hDia.minEntrada - entMin);
-  const bolsaLibre = (hDia.bolsaMin - hDia.comidaOblig) + bolsaExtra;
+  const bolsaLibre = (hDia.bolsaMin - hDia.comidaOblig) + bolsaExtra; // 30m + adelanto
+  const pausasLibresUsadas = Math.min(Math.max(0, totalPausas - hDia.comidaOblig), bolsaLibre);
 
-  // Pausas libres usadas = todo lo que supera la comida obligatoria
-  const pausasLibresUsadas = Math.max(0, totalPausas - hDia.comidaOblig);
+  // Bolsa libre total = 30m base + adelanto por entrada temprana
+  // Cualquier pausa resta de esta bolsa libre
+  const bolsaLibreNoUsada = Math.max(0, bolsaLibre - totalPausas);
+  const sobranteAdelanto = bolsaLibreNoUsada;
 
-  // Sobrante = bolsa libre no usada
-  return Math.max(0, bolsaLibre - pausasLibresUsadas);
+  // Escenario 1: minutos que salió más tarde de la hora prevista
+  let sobranteSalidaTardia = 0;
+  if (eSal) {
+    const salRealMin = tsToMin(eSal.ts);
+    const pausasSumadas = hDia.comidaOblig + pausasLibresUsadas + Math.max(0, totalPausas - (hDia.bolsaMin + bolsaExtra));
+    const salidaPrevista = Math.max(entMin + hDia.jornadaMin + pausasSumadas, hDia.minSalida);
+    sobranteSalidaTardia = Math.max(0, salRealMin - salidaPrevista);
+  }
+
+  return Math.round(sobranteAdelanto + sobranteSalidaTardia);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1332,7 +1341,7 @@ setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v19';
+    const CACHE = 'jornada-v23';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
