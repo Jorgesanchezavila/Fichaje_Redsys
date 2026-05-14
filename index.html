@@ -291,7 +291,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <div class="logo-icon">⏱</div>
     <h1>CONTROL DE JORNADA</h1>
   </div>
-  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v23</span></div>
+  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v24</span></div>
 </header>
 
 <div class="now-time" id="nowTime">—</div>
@@ -907,7 +907,7 @@ function renderAll() {
   const bolsaTotal   = H.bolsaMin + bolsaExtra;
   const bolsaLibre   = H.bolsaMin - H.comidaOblig + bolsaExtra; // 30m opcionales + adelanto
   const pausaExtra   = Math.max(0, totalPausas - bolsaTotal);
-  const bolsaRest    = Math.max(0, bolsaTotal - totalPausas);
+  const bolsaRest    = Math.max(0, bolsaTotal - totalPausas) + bolsaSemanal;
 
   // Bolsa sub label
   const subEl = document.getElementById('bolsaSub');
@@ -918,7 +918,7 @@ function renderAll() {
   subEl.textContent = subTxt;
   subEl.style.color = (bolsaExtra > 0 || bolsaSemanal > 0) ? 'var(--accent)' : '';
 
-  updateBolsa(bolsaRest, totalPausas, bolsaTotal);
+  updateBolsa(bolsaRest, totalPausas, bolsaTotal + bolsaSemanal);
 
   // Actualizar título tarjeta bolsa
   const bct = document.getElementById('bolsaCardTitle');
@@ -1341,7 +1341,7 @@ setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v23';
+    const CACHE = 'jornada-v24';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
