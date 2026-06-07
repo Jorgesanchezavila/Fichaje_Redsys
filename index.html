@@ -291,10 +291,24 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <div class="logo-icon">⏱</div>
     <h1>CONTROL DE JORNADA</h1>
   </div>
-  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v24</span></div>
+  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v25</span></div>
 </header>
 
 <div class="now-time" id="nowTime">—</div>
+
+<!-- Toggle jornada -->
+<div style="width:100%;max-width:460px;margin-bottom:14px;display:flex;justify-content:center;">
+  <button id="btnModo" onclick="toggleModo()" style="
+    background:var(--surface);border:1px solid var(--border);border-radius:100px;
+    color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;
+    padding:8px 20px;cursor:pointer;display:flex;align-items:center;gap:8px;
+    transition:all .2s;
+  ">
+    <span id="modoIcon">❄️</span>
+    <span id="modoLabel">Jornada invierno</span>
+    <span style="font-size:10px;color:var(--muted);margin-left:4px">↕ cambiar</span>
+  </button>
+</div>
 
 <!-- PANTALLA PRINCIPAL -->
 <div class="exit-info">
@@ -429,8 +443,9 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
 
 <div class="nota">
   <span class="tick"></span>
-  Jornada: 8h 15m efectivas + 1h de pausas = 9h 15m totales.<br>
-  Salida mínima <strong style="color:var(--text)">17:00</strong>. Datos guardados en tu dispositivo.
+  <span id="notaTexto">Jornada: 8h 15min de trabajo + 1h de bolsa de pausas = 9h 15min totales.<br>
+  Salida mínima <strong style="color:var(--text)">17:00</strong>.</span>
+  Datos guardados en tu dispositivo.
 </div>
 
 <!-- MODAL CONFIRMACIÓN -->
@@ -453,13 +468,27 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
 // ═══════════════════════════════════════════════════════════════
 const STORAGE_KEY = 'jornada_v2';
 
-// Devuelve el horario según el día de la semana (0=Dom,5=Vie)
+// Modo jornada: 'invierno' | 'verano'
+let modoVerano = localStorage.getItem('modoVerano') === 'true';
+
+function saveModo() {
+  localStorage.setItem('modoVerano', modoVerano ? 'true' : 'false');
+}
+
+// Devuelve el horario según modo y día de la semana
 function getHorario(date) {
   const dow = (date || new Date()).getDay();
-  if (dow === 5) { // Viernes
+  if (modoVerano) {
+    // Jornada verano: L-J 7:30-14:30 (6h45m), Viernes 7:30-14:00 (6h)
+    if (dow === 5) {
+      return { jornadaMin: 6*60, bolsaMin: 20, comidaOblig: 15, minEntrada: 7*60+30, minSalida: 14*60, label: '☀️ Verano viernes' };
+    }
+    return { jornadaMin: 6*60+45, bolsaMin: 20, comidaOblig: 15, minEntrada: 7*60+30, minSalida: 14*60+30, label: '☀️ Verano L–J' };
+  }
+  // Jornada invierno
+  if (dow === 5) {
     return { jornadaMin: 6*60, bolsaMin: 30, comidaOblig: 15, minEntrada: 7*60+30, minSalida: 14*60, label: 'Jornada viernes' };
   }
-  // Lunes–Jueves (y por si acaso sábado/domingo)
   return { jornadaMin: 8*60+15, bolsaMin: 60, comidaOblig: 30, minEntrada: 7*60+45, minSalida: 17*60, label: 'Jornada L–J' };
 }
 
@@ -802,7 +831,8 @@ function clearAlert() {
 }
 
 function renderAll() {
-  H = getHorario(); // actualizar horario según día actual
+  H = getHorario();
+  updateModoBtn();
   clearAlert();
   const now = new Date();
   const nowMs = now.getTime();
@@ -1090,6 +1120,35 @@ function toggleEditEntrada() {
   }
 }
 
+function toggleModo() {
+  modoVerano = !modoVerano;
+  saveModo();
+  H = getHorario();
+  renderAll();
+}
+
+function updateModoBtn() {
+  const icon  = document.getElementById('modoIcon');
+  const label = document.getElementById('modoLabel');
+  const btn   = document.getElementById('btnModo');
+  const nota  = document.getElementById('notaTexto');
+  if (modoVerano) {
+    icon.textContent  = '☀️';
+    label.textContent = 'Jornada verano';
+    btn.style.borderColor = 'rgba(245,158,11,.4)';
+    btn.style.background  = 'rgba(245,158,11,.08)';
+    btn.style.color       = '#f59e0b';
+    if (nota) nota.innerHTML = 'Verano L–J: 6h 45m + 20m pausas. Viernes: 6h + 20m pausas.<br>Salida mínima L–J <strong style="color:var(--text)">14:30</strong> · Viernes <strong style="color:var(--text)">14:00</strong>.';
+  } else {
+    icon.textContent  = '❄️';
+    label.textContent = 'Jornada invierno';
+    btn.style.borderColor = '';
+    btn.style.background  = '';
+    btn.style.color       = '';
+    if (nota) nota.innerHTML = 'Invierno L–J: 8h 15m + 1h pausas. Viernes: 6h + 30m pausas.<br>Salida mínima L–J <strong style="color:var(--text)">17:00</strong> · Viernes <strong style="color:var(--text)">14:00</strong>.';
+  }
+}
+
 function toggleEvents() {
   const log = document.getElementById('eventsLog');
   const btn = document.getElementById('btnEventsToggle');
@@ -1341,7 +1400,7 @@ setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v24';
+    const CACHE = 'jornada-v25';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
