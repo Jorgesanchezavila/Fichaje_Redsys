@@ -291,7 +291,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <div class="logo-icon">⏱</div>
     <h1>CONTROL DE JORNADA</h1>
   </div>
-  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v25</span></div>
+  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v26</span></div>
 </header>
 
 <div class="now-time" id="nowTime">—</div>
@@ -596,26 +596,27 @@ function calcSobranteDia(dayData, dayDate) {
   });
   const totalPausas = comidaMin + breaksMin;
 
-  // Bolsa libre = minutos antes de 07:45 (adelanto)
+  // Bolsa libre = 30m base + adelanto por entrada temprana
   const bolsaExtra = Math.max(0, hDia.minEntrada - entMin);
-  const bolsaLibre = (hDia.bolsaMin - hDia.comidaOblig) + bolsaExtra; // 30m + adelanto
+  const bolsaLibre = (hDia.bolsaMin - hDia.comidaOblig) + bolsaExtra;
   const pausasLibresUsadas = Math.min(Math.max(0, totalPausas - hDia.comidaOblig), bolsaLibre);
 
-  // Bolsa libre total = 30m base + adelanto por entrada temprana
-  // Cualquier pausa resta de esta bolsa libre
+  // Bolsa libre no usada (positivo = sobrante)
   const bolsaLibreNoUsada = Math.max(0, bolsaLibre - totalPausas);
-  const sobranteAdelanto = bolsaLibreNoUsada;
 
-  // Escenario 1: minutos que salió más tarde de la hora prevista
-  let sobranteSalidaTardia = 0;
+  // Diferencia respecto a la hora prevista (positivo = tarde, negativo = antes)
+  let difSalida = 0;
   if (eSal) {
     const salRealMin = tsToMin(eSal.ts);
-    const pausasSumadas = hDia.comidaOblig + pausasLibresUsadas + Math.max(0, totalPausas - (hDia.bolsaMin + bolsaExtra));
+    const pausaExtra = Math.max(0, totalPausas - (hDia.bolsaMin + bolsaExtra));
+    const pausasSumadas = hDia.comidaOblig + pausasLibresUsadas + pausaExtra;
     const salidaPrevista = Math.max(entMin + hDia.jornadaMin + pausasSumadas, hDia.minSalida);
-    sobranteSalidaTardia = Math.max(0, salRealMin - salidaPrevista);
+    difSalida = salRealMin - salidaPrevista; // puede ser negativo
   }
 
-  return Math.round(sobranteAdelanto + sobranteSalidaTardia);
+  // Si salió tarde: acumula tardanza + bolsa no usada
+  // Si salió antes: genera deuda (negativo), compensada por bolsa no usada
+  return Math.round(bolsaLibreNoUsada + difSalida);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -921,9 +922,17 @@ function renderAll() {
     document.getElementById('recoverBox').className = 'recover-box';
     const bsem0 = getBolsaSemanal();
     const bct0 = document.getElementById('bolsaCardTitle');
-    if (bct0) bct0.textContent = bsem0 > 0 ? `1h + 📦 ${bsem0}m acumulados` : '1h total';
+    if (bct0) {
+      if (bsem0 > 0) bct0.textContent = `1h + 📦 ${bsem0}m acumulados`;
+      else if (bsem0 < 0) bct0.textContent = `1h · ⚠️ ${Math.abs(bsem0)}m de deuda`;
+      else bct0.textContent = '1h total';
+    }
     const subEl0 = document.getElementById('bolsaSub');
-    if (subEl0 && bsem0 > 0) { subEl0.textContent = `📦 ${bsem0}m acumulados esta semana`; subEl0.style.color='var(--accent)'; }
+    if (subEl0) {
+      if (bsem0 > 0) { subEl0.textContent = `📦 ${bsem0}m acumulados esta semana`; subEl0.style.color='var(--accent)'; }
+      else if (bsem0 < 0) { subEl0.textContent = `⚠️ ${Math.abs(bsem0)}m de deuda esta semana`; subEl0.style.color='var(--danger)'; }
+      else { subEl0.textContent = 'Comida + breaks comparten esta hora'; subEl0.style.color=''; }
+    }
     renderEvents();
     updateBolsa(H.bolsaMin, 0, H.bolsaMin);
     return;
@@ -945,14 +954,19 @@ function renderAll() {
   let subTxt = `${Math.round(bolsaLibreRest)}m libres hoy`;
   if (bolsaExtra > 0) subTxt += ` (+${Math.round(bolsaExtra)}m adelanto)`;
   if (bolsaSemanal > 0) subTxt += ` · 📦 ${bolsaSemanal}m acumulados`;
+  if (bolsaSemanal < 0) subTxt += ` · ⚠️ ${Math.abs(bolsaSemanal)}m de deuda`;
   subEl.textContent = subTxt;
-  subEl.style.color = (bolsaExtra > 0 || bolsaSemanal > 0) ? 'var(--accent)' : '';
+  subEl.style.color = bolsaSemanal < 0 ? 'var(--danger)' : (bolsaExtra > 0 || bolsaSemanal > 0) ? 'var(--accent)' : '';
 
   updateBolsa(bolsaRest, totalPausas, bolsaTotal + bolsaSemanal);
 
   // Actualizar título tarjeta bolsa
   const bct = document.getElementById('bolsaCardTitle');
-  if (bct) bct.textContent = bolsaSemanal > 0 ? `1h + 📦 ${bolsaSemanal}m acumulados` : '1h total';
+  if (bct) {
+    if (bolsaSemanal > 0) bct.textContent = `1h + 📦 ${bolsaSemanal}m acumulados`;
+    else if (bolsaSemanal < 0) bct.textContent = `1h · ⚠️ ${Math.abs(bolsaSemanal)}m de deuda`;
+    else bct.textContent = '1h total';
+  }
 
   // Pausas libres usadas = lo que supera la comida obligatoria (máx bolsaLibre)
   const pausasLibresUsadas = Math.min(Math.max(0, totalPausas - H.comidaOblig), bolsaLibre);
@@ -1269,7 +1283,11 @@ function buildDayCard(key, d) {
   const pillPausas    = totalPausas>0 ? `<span class="pill ${pausaExtra>0?'bad':'ok'}">${Math.round(totalPausas)}m pausas</span>` : '';
   const pillAdelanto  = adelanto>0 ? `<span class="pill ok">+${Math.round(adelanto)}m bolsa</span>` : '';
   const sobrante = calcSobranteDia({events}, key);
-  const pillSobrante  = sobrante>0 ? `<span class="pill ok">📦 +${Math.round(sobrante)}m acumulados</span>` : '';
+  const pillSobrante = sobrante > 0
+    ? `<span class="pill ok">📦 +${Math.round(sobrante)}m acumulados</span>`
+    : sobrante < 0
+      ? `<span class="pill bad">⚠️ ${Math.round(sobrante)}m deuda</span>`
+      : '';
   const pillSalida    = eSal
     ? `<span class="pill ok">Salida ${toHM(eSal.ts)}</span>`
     : eMed
@@ -1400,7 +1418,7 @@ setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v25';
+    const CACHE = 'jornada-v26';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
