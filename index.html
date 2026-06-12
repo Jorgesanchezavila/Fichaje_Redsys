@@ -291,7 +291,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <div class="logo-icon">⏱</div>
     <h1>CONTROL DE JORNADA</h1>
   </div>
-  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v26</span></div>
+  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v28</span></div>
 </header>
 
 <div class="now-time" id="nowTime">—</div>
@@ -574,11 +574,13 @@ function calcSobranteDia(dayData, dayDate) {
 
   const hDia = getHorario(new Date(dayDate));
   const entMin = tsToMin(eEnt.ts);
-
-  // Calcular pausas totales del día
   const eSal = events.find(e => e.type === 'salida') || events.find(e => e.type === 'medico');
-  const topeTs = eSal ? eSal.ts : eEnt.ts + (hDia.jornadaMin + hDia.bolsaMin) * 60000;
 
+  // Adelanto de entrada: minutos antes del mínimo (07:45 invierno / 07:30 verano)
+  const adelantoEntrada = Math.max(0, hDia.minEntrada - entMin);
+
+  // Calcular pausas totales del día para obtener la hora prevista de salida
+  const topeTs = eSal ? eSal.ts : eEnt.ts + (hDia.jornadaMin + hDia.bolsaMin) * 60000;
   let comidaMin = 0;
   const cIni = events.find(e => e.type === 'comida_ini');
   const cFin = events.find(e => e.type === 'comida_fin');
@@ -596,27 +598,22 @@ function calcSobranteDia(dayData, dayDate) {
   });
   const totalPausas = comidaMin + breaksMin;
 
-  // Bolsa libre = 30m base + adelanto por entrada temprana
-  const bolsaExtra = Math.max(0, hDia.minEntrada - entMin);
+  const bolsaExtra = adelantoEntrada;
   const bolsaLibre = (hDia.bolsaMin - hDia.comidaOblig) + bolsaExtra;
   const pausasLibresUsadas = Math.min(Math.max(0, totalPausas - hDia.comidaOblig), bolsaLibre);
+  const pausaExtra = Math.max(0, totalPausas - (hDia.bolsaMin + bolsaExtra));
+  const pausasSumadas = hDia.comidaOblig + pausasLibresUsadas + pausaExtra;
+  const salidaPrevista = Math.max(entMin + hDia.jornadaMin + pausasSumadas, hDia.minSalida);
 
-  // Bolsa libre no usada (positivo = sobrante)
-  const bolsaLibreNoUsada = Math.max(0, bolsaLibre - totalPausas);
-
-  // Diferencia respecto a la hora prevista (positivo = tarde, negativo = antes)
-  let difSalida = 0;
+  // Salida tardía: minutos después de SU hora prevista (no del mínimo absoluto)
+  let salidaTardia = 0;
   if (eSal) {
     const salRealMin = tsToMin(eSal.ts);
-    const pausaExtra = Math.max(0, totalPausas - (hDia.bolsaMin + bolsaExtra));
-    const pausasSumadas = hDia.comidaOblig + pausasLibresUsadas + pausaExtra;
-    const salidaPrevista = Math.max(entMin + hDia.jornadaMin + pausasSumadas, hDia.minSalida);
-    difSalida = salRealMin - salidaPrevista; // puede ser negativo
+    salidaTardia = Math.max(0, salRealMin - salidaPrevista);
   }
 
-  // Si salió tarde: acumula tardanza + bolsa no usada
-  // Si salió antes: genera deuda (negativo), compensada por bolsa no usada
-  return Math.round(bolsaLibreNoUsada + difSalida);
+  // Solo se acumula: adelanto de entrada (antes de 07:45/07:30) + salida tardía respecto a SU prevista
+  return Math.round(adelantoEntrada + salidaTardia);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1418,7 +1415,7 @@ setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v26';
+    const CACHE = 'jornada-v28';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
