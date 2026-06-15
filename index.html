@@ -291,7 +291,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <div class="logo-icon">⏱</div>
     <h1>CONTROL DE JORNADA</h1>
   </div>
-  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v28</span></div>
+  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v29</span></div>
 </header>
 
 <div class="now-time" id="nowTime">—</div>
@@ -481,9 +481,9 @@ function getHorario(date) {
   if (modoVerano) {
     // Jornada verano: L-J 7:30-14:30 (6h45m), Viernes 7:30-14:00 (6h)
     if (dow === 5) {
-      return { jornadaMin: 6*60, bolsaMin: 20, comidaOblig: 15, minEntrada: 7*60+30, minSalida: 14*60, label: '☀️ Verano viernes' };
+      return { jornadaMin: 6*60, bolsaMin: 15, comidaOblig: 15, minEntrada: 7*60+30, minSalida: 14*60, label: '☀️ Verano viernes' };
     }
-    return { jornadaMin: 6*60+45, bolsaMin: 20, comidaOblig: 15, minEntrada: 7*60+30, minSalida: 14*60+30, label: '☀️ Verano L–J' };
+    return { jornadaMin: 6*60+45, bolsaMin: 15, comidaOblig: 15, minEntrada: 7*60+30, minSalida: 14*60+30, label: '☀️ Verano L–J' };
   }
   // Jornada invierno
   if (dow === 5) {
@@ -1149,7 +1149,7 @@ function updateModoBtn() {
     btn.style.borderColor = 'rgba(245,158,11,.4)';
     btn.style.background  = 'rgba(245,158,11,.08)';
     btn.style.color       = '#f59e0b';
-    if (nota) nota.innerHTML = 'Verano L–J: 6h 45m + 20m pausas. Viernes: 6h + 20m pausas.<br>Salida mínima L–J <strong style="color:var(--text)">14:30</strong> · Viernes <strong style="color:var(--text)">14:00</strong>.';
+    if (nota) nota.innerHTML = 'Verano L–J: 6h 45m + 15m pausa obligatoria. Viernes: 6h + 15m pausa.<br>Salida mínima L–J <strong style="color:var(--text)">14:30</strong> · Viernes <strong style="color:var(--text)">14:00</strong>.';
   } else {
     icon.textContent  = '❄️';
     label.textContent = 'Jornada invierno';
@@ -1415,7 +1415,7 @@ setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v28';
+    const CACHE = 'jornada-v29';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
