@@ -291,7 +291,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <div class="logo-icon">⏱</div>
     <h1>CONTROL DE JORNADA</h1>
   </div>
-  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v29</span></div>
+  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v30</span></div>
 </header>
 
 <div class="now-time" id="nowTime">—</div>
@@ -396,6 +396,14 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <button class="btn-edit-confirm" style="width:100%" onclick="confirmEditComida()">Guardar comida</button>
   </div>
   <button class="btn-add" id="btnEditComida" onclick="toggleEditComida()" style="margin-bottom:10px;display:none">🍽 Registrar/editar comida</button>
+
+  <!-- Editar descansos olvidados -->
+  <div class="edit-entrada-row" id="editBreaksRow" style="display:none">
+    <div class="edit-entrada-label">☕ Registrar/editar descansos manualmente</div>
+    <div id="editBreaksList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px"></div>
+    <button class="btn-add" style="margin-bottom:0" onclick="addManualBreak()">＋ Añadir descanso</button>
+  </div>
+  <button class="btn-add" id="btnEditBreaks" onclick="toggleEditBreaks()" style="margin-bottom:10px;display:none">☕ Registrar/editar descansos</button>
   <div class="bolsa-box">
     <div class="bolsa-row">
       <span class="bolsa-lbl">Bolsa disponible</span>
@@ -897,6 +905,10 @@ function renderAll() {
   const btnEditComida = document.getElementById('btnEditComida');
   if (btnEditComida) btnEditComida.style.display = entered ? 'flex' : 'none';
 
+  // Botón editar descansos (visible si hay entrada)
+  const btnEditBreaks = document.getElementById('btnEditBreaks');
+  if (btnEditBreaks) btnEditBreaks.style.display = entered ? 'flex' : 'none';
+
   const sEv = getLastEvent('salida') || getLastEvent('medico');
   document.getElementById('lblSalida').textContent  = sEv ? toHM(sEv.ts) : 'sin fichar';
 
@@ -1314,7 +1326,100 @@ function buildDayCard(key, d) {
 // ═══════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════
-// ── Editar comida manualmente ─────────────────────────────────
+// ── Editar descansos manualmente ──────────────────────────────
+function toggleEditBreaks() {
+  const row = document.getElementById('editBreaksRow');
+  const isOpen = row.style.display !== 'none';
+  row.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) renderEditBreaksList();
+}
+
+function renderEditBreaksList() {
+  const list = document.getElementById('editBreaksList');
+  const bInis = state.events.filter(e => e.type === 'break_ini');
+  const bFins = state.events.filter(e => e.type === 'break_fin');
+
+  if (!bInis.length) {
+    list.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px 0">Sin descansos registrados — pulsa + para añadir uno</div>';
+    return;
+  }
+
+  list.innerHTML = bInis.map((ini, i) => {
+    const fin = bFins[i];
+    const dIni = new Date(ini.ts);
+    const iniStr = String(dIni.getHours()).padStart(2,'0')+':'+String(dIni.getMinutes()).padStart(2,'0');
+    let finStr = '';
+    if (fin) {
+      const dFin = new Date(fin.ts);
+      finStr = String(dFin.getHours()).padStart(2,'0')+':'+String(dFin.getMinutes()).padStart(2,'0');
+    }
+    return `
+      <div style="display:flex;gap:6px;align-items:end;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px">
+        <div style="flex:1">
+          <div class="break-label" style="margin-bottom:3px">Inicio</div>
+          <input type="time" data-idx="${i}" data-field="ini" value="${iniStr}" onchange="updateManualBreak(this)"
+            style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:15px;padding:6px 8px;width:100%;outline:none;-webkit-appearance:none;">
+        </div>
+        <div style="flex:1">
+          <div class="break-label" style="margin-bottom:3px">Fin</div>
+          <input type="time" data-idx="${i}" data-field="fin" value="${finStr}" onchange="updateManualBreak(this)"
+            style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:15px;padding:6px 8px;width:100%;outline:none;-webkit-appearance:none;">
+        </div>
+        <button class="btn-remove" onclick="deleteManualBreak(${i})" title="Eliminar" style="margin-bottom:0">✕</button>
+      </div>`;
+  }).join('');
+}
+
+function updateManualBreak(input) {
+  const idx = parseInt(input.dataset.idx);
+  const field = input.dataset.field;
+  const val = input.value;
+  if (!val) return;
+
+  const bInis = state.events.filter(e => e.type === 'break_ini');
+  const bFins = state.events.filter(e => e.type === 'break_fin');
+  const base = new Date(); base.setSeconds(0,0);
+  const [h, m] = val.split(':').map(Number);
+  const d = new Date(base); d.setHours(h, m, 0, 0);
+
+  if (field === 'ini') {
+    bInis[idx].ts = d.getTime();
+  } else {
+    if (bFins[idx]) {
+      bFins[idx].ts = d.getTime();
+    } else {
+      // No existe fin todavía — crearlo
+      state.events.push({ type: 'break_fin', ts: d.getTime() });
+    }
+  }
+
+  state.events.sort((a,b) => a.ts - b.ts);
+  saveToday();
+  renderEditBreaksList();
+  renderAll();
+}
+
+function addManualBreak() {
+  const now = new Date();
+  state.events.push({ type: 'break_ini', ts: now.getTime() });
+  state.events.sort((a,b) => a.ts - b.ts);
+  saveToday();
+  renderEditBreaksList();
+  renderAll();
+}
+
+function deleteManualBreak(idx) {
+  const bInis = state.events.filter(e => e.type === 'break_ini');
+  const bFins = state.events.filter(e => e.type === 'break_fin');
+  const iniToRemove = bInis[idx];
+  const finToRemove = bFins[idx];
+  state.events = state.events.filter(e => e !== iniToRemove && e !== finToRemove);
+  saveToday();
+  renderEditBreaksList();
+  renderAll();
+}
+
+
 function toggleEditComida() {
   const row = document.getElementById('editComidaRow');
   const isOpen = row.style.display !== 'none';
@@ -1378,8 +1483,8 @@ async function requestNotifPermission() {
 }
 
 function sendNotif(title, body, icon) {
-  if (!notifPermission || document.visibilityState === 'visible') return;
-  try { new Notification(title, { body, icon: '⏱', silent: false }); } catch(e){}
+  if (!notifPermission) return;
+  try { new Notification(title, { body, silent: false }); } catch(e){}
 }
 
 function checkPauseNotifications() {
@@ -1415,7 +1520,7 @@ setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v29';
+    const CACHE = 'jornada-v30';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
