@@ -291,7 +291,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <div class="logo-icon">⏱</div>
     <h1>CONTROL DE JORNADA</h1>
   </div>
-  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v30</span></div>
+  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v32</span></div>
 </header>
 
 <div class="now-time" id="nowTime">—</div>
@@ -413,6 +413,18 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
       <div class="progress-bar" id="bolsaBar" style="width:100%"></div>
     </div>
     <div class="bolsa-sub" id="bolsaSub">Comida + breaks comparten esta hora</div>
+  </div>
+
+  <!-- Barra de deuda a recuperar -->
+  <div id="deudaBox" style="display:none;background:rgba(255,45,58,.06);border:1px solid rgba(255,45,58,.25);border-radius:12px;padding:12px 14px;margin-bottom:10px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">⚠️ Tiempo a recuperar</span>
+      <span style="font-family:'Space Mono',monospace;font-size:20px;font-weight:700;color:var(--danger)" id="deudaVal">0m</span>
+    </div>
+    <div class="progress-track" style="margin-bottom:0">
+      <div id="deudaBar" style="height:100%;border-radius:100px;background:linear-gradient(90deg,var(--danger),var(--accent2));transition:width .5s ease;width:0%"></div>
+    </div>
+    <div style="font-size:10px;color:var(--muted);text-align:center;margin-top:6px" id="deudaSub">Se recupera entrando antes o saliendo más tarde que tu hora prevista</div>
   </div>
 
   <div class="btn-row-pause">
@@ -622,6 +634,66 @@ function calcSobranteDia(dayData, dayDate) {
 
   // Solo se acumula: adelanto de entrada (antes de 07:45/07:30) + salida tardía respecto a SU prevista
   return Math.round(adelantoEntrada + salidaTardia);
+}
+
+// Calcula minutos de deuda generados en un día (salida antes de la hora prevista)
+function calcDeudaDia(dayData, dayDate) {
+  const events = (dayData && dayData.events) ? dayData.events : [];
+  const eEnt = events.find(e => e.type === 'entrada');
+  if (!eEnt) return 0;
+  const eSal = events.find(e => e.type === 'salida') || events.find(e => e.type === 'medico');
+  if (!eSal) return 0;
+
+  const hDia = getHorario(new Date(dayDate));
+  const entMin = tsToMin(eEnt.ts);
+  const salRealMin = tsToMin(eSal.ts);
+
+  // Calcular pausas totales del día
+  const topeTs = eSal.ts;
+  let comidaMin = 0;
+  const cIni = events.find(e => e.type === 'comida_ini');
+  const cFin = events.find(e => e.type === 'comida_fin');
+  if (cIni) { const endTs = cFin ? Math.min(cFin.ts, topeTs) : topeTs; comidaMin = Math.max(0,(endTs-cIni.ts)/60000); }
+  let breaksMin = 0;
+  const bInis = events.filter(e => e.type === 'break_ini');
+  const bFins = events.filter(e => e.type === 'break_fin');
+  bInis.forEach((ini,i) => { const fin=bFins[i]; const endTs=fin?Math.min(fin.ts,topeTs):topeTs; breaksMin+=Math.max(0,(endTs-ini.ts)/60000); });
+  const totalPausas = comidaMin + breaksMin;
+
+  const bolsaExtra = Math.max(0, hDia.minEntrada - entMin);
+  const bolsaLibre = (hDia.bolsaMin - hDia.comidaOblig) + bolsaExtra;
+  const pausasLibresUsadas = Math.min(Math.max(0, totalPausas - hDia.comidaOblig), bolsaLibre);
+  const pausaExtra = Math.max(0, totalPausas - (hDia.bolsaMin + bolsaExtra));
+  const pausasSumadas = hDia.comidaOblig + pausasLibresUsadas + pausaExtra;
+  const salidaPrevista = Math.max(entMin + hDia.jornadaMin + pausasSumadas, hDia.minSalida);
+
+  // Deuda = minutos que salió ANTES de la hora prevista
+  return Math.round(Math.max(0, salidaPrevista - salRealMin));
+}
+
+// Devuelve deuda total acumulada histórica (no se resetea), compensada por sobrante semanal
+function getDeudaTotal() {
+  const all = loadStorage();
+  const today = todayKey();
+  const todayMidnight = new Date(); todayMidnight.setHours(0,0,0,0);
+
+  let deuda = 0;
+  let recuperado = 0;
+
+  for (const key of Object.keys(all)) {
+    if (key === today || key.startsWith('week_')) continue;
+    const parts = key.split('-');
+    if (parts.length !== 3) continue;
+    const [y,mo,da] = parts.map(Number);
+    const d = new Date(y, mo-1, da);
+    if (d >= todayMidnight) continue;
+
+    deuda      += calcDeudaDia(all[key], key);
+    recuperado += calcSobranteDia(all[key], key);
+  }
+
+  // El sobrante compensa la deuda
+  return Math.max(0, deuda - recuperado);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -944,6 +1016,17 @@ function renderAll() {
     }
     renderEvents();
     updateBolsa(H.bolsaMin, 0, H.bolsaMin);
+    // Deuda en estado sin entrada
+    const deudaTotal0 = getDeudaTotal();
+    const deudaBox0 = document.getElementById('deudaBox');
+    if (deudaBox0) {
+      if (deudaTotal0 > 0) {
+        deudaBox0.style.display = 'block';
+        document.getElementById('deudaVal').textContent = Math.round(deudaTotal0) + 'm';
+        document.getElementById('deudaBar').style.width = Math.min(100,(deudaTotal0/240)*100)+'%';
+        document.getElementById('deudaSub').textContent = `Entra antes de las ${toHM(new Date().setHours(0,0,0,0)+H.minEntrada*60000)} o sal más tarde de tu hora prevista para recuperar`;
+      } else { deudaBox0.style.display = 'none'; }
+    }
     return;
   }
 
@@ -969,8 +1052,22 @@ function renderAll() {
 
   updateBolsa(bolsaRest, totalPausas, bolsaTotal + bolsaSemanal);
 
-  // Actualizar título tarjeta bolsa
-  const bct = document.getElementById('bolsaCardTitle');
+  // Actualizar barra de deuda
+  const deudaTotal = getDeudaTotal();
+  const deudaBox = document.getElementById('deudaBox');
+  if (deudaBox) {
+    if (deudaTotal > 0) {
+      deudaBox.style.display = 'block';
+      document.getElementById('deudaVal').textContent = Math.round(deudaTotal) + 'm';
+      // Barra: máx visual = 4h (240m)
+      const pct = Math.min(100, (deudaTotal / 240) * 100);
+      document.getElementById('deudaBar').style.width = pct + '%';
+      document.getElementById('deudaSub').textContent =
+        `Entra antes de las ${toHM(new Date().setHours(0,0,0,0)+H.minEntrada*60000)} o sal más tarde de tu hora prevista para recuperar`;
+    } else {
+      deudaBox.style.display = 'none';
+    }
+  }
   if (bct) {
     if (bolsaSemanal > 0) bct.textContent = `1h + 📦 ${bolsaSemanal}m acumulados`;
     else if (bolsaSemanal < 0) bct.textContent = `1h · ⚠️ ${Math.abs(bolsaSemanal)}m de deuda`;
@@ -1292,11 +1389,13 @@ function buildDayCard(key, d) {
   const pillPausas    = totalPausas>0 ? `<span class="pill ${pausaExtra>0?'bad':'ok'}">${Math.round(totalPausas)}m pausas</span>` : '';
   const pillAdelanto  = adelanto>0 ? `<span class="pill ok">+${Math.round(adelanto)}m bolsa</span>` : '';
   const sobrante = calcSobranteDia({events}, key);
+  const deuda    = calcDeudaDia({events}, key);
   const pillSobrante = sobrante > 0
     ? `<span class="pill ok">📦 +${Math.round(sobrante)}m acumulados</span>`
-    : sobrante < 0
-      ? `<span class="pill bad">⚠️ ${Math.round(sobrante)}m deuda</span>`
-      : '';
+    : '';
+  const pillDeuda = deuda > 0
+    ? `<span class="pill bad">⚠️ -${Math.round(deuda)}m deuda</span>`
+    : '';
   const pillSalida    = eSal
     ? `<span class="pill ok">Salida ${toHM(eSal.ts)}</span>`
     : eMed
@@ -1313,19 +1412,106 @@ function buildDayCard(key, d) {
     </div>`;
   }).join('');
 
+  // Panel de edición del día
+  const cIniStr = cIni ? toHM(cIni.ts) : '';
+  const cFinStr = cFin ? toHM(cFin.ts) : '';
+  const bInisStr = bInis.map((b,i) => {
+    const bf = bFins[i];
+    return `<div style="display:flex;gap:6px;align-items:end;margin-bottom:6px">
+      <div style="flex:1"><div class="break-label">Inicio break ${i+1}</div>
+        <input type="time" value="${toHM(b.ts)}" data-key="${key}" data-idx="${i}" data-field="break_ini" onchange="editHistEvent(this)"
+          style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:14px;padding:5px 8px;width:100%;outline:none;-webkit-appearance:none;"></div>
+      <div style="flex:1"><div class="break-label">Fin break ${i+1}</div>
+        <input type="time" value="${bf?toHM(bf.ts):''}" data-key="${key}" data-idx="${i}" data-field="break_fin" onchange="editHistEvent(this)"
+          style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:14px;padding:5px 8px;width:100%;outline:none;-webkit-appearance:none;"></div>
+    </div>`;
+  }).join('');
+
+  const editPanel = `
+    <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px;display:flex;flex-direction:column;gap:8px;">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">✏️ Editar este día</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div><div class="break-label">Entrada</div>
+          <input type="time" value="${eEnt?toHM(eEnt.ts):''}" data-key="${key}" data-field="entrada" onchange="editHistEvent(this)"
+            style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:14px;padding:5px 8px;width:100%;outline:none;-webkit-appearance:none;"></div>
+        <div><div class="break-label">Salida</div>
+          <input type="time" value="${eSalida?toHM(eSalida.ts):''}" data-key="${key}" data-field="salida" onchange="editHistEvent(this)"
+            style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:14px;padding:5px 8px;width:100%;outline:none;-webkit-appearance:none;"></div>
+        <div><div class="break-label">Comida inicio</div>
+          <input type="time" value="${cIniStr}" data-key="${key}" data-field="comida_ini" onchange="editHistEvent(this)"
+            style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:14px;padding:5px 8px;width:100%;outline:none;-webkit-appearance:none;"></div>
+        <div><div class="break-label">Comida fin</div>
+          <input type="time" value="${cFinStr}" data-key="${key}" data-field="comida_fin" onchange="editHistEvent(this)"
+            style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:14px;padding:5px 8px;width:100%;outline:none;-webkit-appearance:none;"></div>
+      </div>
+      ${bInisStr}
+    </div>`;
+
   return `<div class="hist-day">
     <div class="hist-day-header">
       <span class="hist-day-date">${fecha}</span>
-      <span class="hist-day-sum">${eEnt?toHM(eEnt.ts):'--'} → ${eSal?toHM(eSal.ts):'--'}</span>
+      <span class="hist-day-sum">${eEnt?toHM(eEnt.ts):'--'} → ${eSalida?toHM(eSalida.ts):'--'}</span>
     </div>
-    <div class="hist-day-pills">${pillTrabajado}${pillPausas}${pillAdelanto}${pillSobrante}${pillSalida}</div>
-    <div class="hist-day-events">${evHtml}</div>
+    <div class="hist-day-pills">${pillTrabajado}${pillPausas}${pillAdelanto}${pillSobrante}${pillDeuda}${pillSalida}</div>
+    <div class="hist-day-events">${evHtml}${editPanel}</div>
   </div>`;
 }
 
 // ═══════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════
+// ── Editar eventos de días anteriores ─────────────────────────
+function editHistEvent(input) {
+  const key   = input.dataset.key;
+  const field = input.dataset.field;
+  const idx   = input.dataset.idx !== undefined ? parseInt(input.dataset.idx) : null;
+  const val   = input.value;
+  if (!val) return;
+
+  const all = loadStorage();
+  const dayData = all[key];
+  if (!dayData || !dayData.events) return;
+
+  const [y,mo,da] = key.split('-').map(Number);
+  const [h, m] = val.split(':').map(Number);
+  const d = new Date(y, mo-1, da, h, m, 0, 0);
+  const ts = d.getTime();
+
+  if (field === 'entrada') {
+    const ev = dayData.events.find(e => e.type === 'entrada');
+    if (ev) ev.ts = ts;
+    else dayData.events.push({ type:'entrada', ts });
+  } else if (field === 'salida') {
+    // Reemplaza salida o medico existente
+    let ev = dayData.events.find(e => e.type === 'salida') || dayData.events.find(e => e.type === 'medico');
+    if (ev) ev.ts = ts;
+    else dayData.events.push({ type:'salida', ts });
+  } else if (field === 'comida_ini') {
+    const ev = dayData.events.find(e => e.type === 'comida_ini');
+    if (ev) ev.ts = ts;
+    else dayData.events.push({ type:'comida_ini', ts });
+  } else if (field === 'comida_fin') {
+    const ev = dayData.events.find(e => e.type === 'comida_fin');
+    if (ev) ev.ts = ts;
+    else dayData.events.push({ type:'comida_fin', ts });
+  } else if (field === 'break_ini' && idx !== null) {
+    const bInis = dayData.events.filter(e => e.type === 'break_ini');
+    if (bInis[idx]) bInis[idx].ts = ts;
+  } else if (field === 'break_fin' && idx !== null) {
+    const bFins = dayData.events.filter(e => e.type === 'break_fin');
+    if (bFins[idx]) bFins[idx].ts = ts;
+    else dayData.events.push({ type:'break_fin', ts });
+  }
+
+  dayData.events.sort((a,b) => a.ts - b.ts);
+  all[key] = dayData;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+
+  // Refrescar historial y deuda
+  renderHistorial();
+  renderAll();
+}
+
 // ── Editar descansos manualmente ──────────────────────────────
 function toggleEditBreaks() {
   const row = document.getElementById('editBreaksRow');
@@ -1520,7 +1706,7 @@ setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v30';
+    const CACHE = 'jornada-v32';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
