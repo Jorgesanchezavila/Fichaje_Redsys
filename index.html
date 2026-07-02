@@ -291,7 +291,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <div class="logo-icon">⏱</div>
     <h1>CONTROL DE JORNADA</h1>
   </div>
-  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v32</span></div>
+  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v33</span></div>
 </header>
 
 <div class="now-time" id="nowTime">—</div>
@@ -1023,8 +1023,9 @@ function renderAll() {
       if (deudaTotal0 > 0) {
         deudaBox0.style.display = 'block';
         document.getElementById('deudaVal').textContent = Math.round(deudaTotal0) + 'm';
+        const todayB3 = new Date(); todayB3.setHours(0,0,0,0);
         document.getElementById('deudaBar').style.width = Math.min(100,(deudaTotal0/240)*100)+'%';
-        document.getElementById('deudaSub').textContent = `Entra antes de las ${toHM(new Date().setHours(0,0,0,0)+H.minEntrada*60000)} o sal más tarde de tu hora prevista para recuperar`;
+        document.getElementById('deudaSub').textContent = `Entra antes de las ${toHM(todayB3.getTime()+H.minEntrada*60000)} o sal más tarde de tu hora prevista para recuperar`;
       } else { deudaBox0.style.display = 'none'; }
     }
     return;
@@ -1052,6 +1053,14 @@ function renderAll() {
 
   updateBolsa(bolsaRest, totalPausas, bolsaTotal + bolsaSemanal);
 
+  // Actualizar título tarjeta bolsa
+  const bct = document.getElementById('bolsaCardTitle');
+  if (bct) {
+    if (bolsaSemanal > 0) bct.textContent = `1h + 📦 ${bolsaSemanal}m acumulados`;
+    else if (bolsaSemanal < 0) bct.textContent = `1h · ⚠️ ${Math.abs(bolsaSemanal)}m de deuda`;
+    else bct.textContent = '1h total';
+  }
+
   // Actualizar barra de deuda
   const deudaTotal = getDeudaTotal();
   const deudaBox = document.getElementById('deudaBox');
@@ -1059,19 +1068,14 @@ function renderAll() {
     if (deudaTotal > 0) {
       deudaBox.style.display = 'block';
       document.getElementById('deudaVal').textContent = Math.round(deudaTotal) + 'm';
-      // Barra: máx visual = 4h (240m)
       const pct = Math.min(100, (deudaTotal / 240) * 100);
       document.getElementById('deudaBar').style.width = pct + '%';
+      const todayB2 = new Date(); todayB2.setHours(0,0,0,0);
       document.getElementById('deudaSub').textContent =
-        `Entra antes de las ${toHM(new Date().setHours(0,0,0,0)+H.minEntrada*60000)} o sal más tarde de tu hora prevista para recuperar`;
+        `Entra antes de las ${toHM(todayB2.getTime()+H.minEntrada*60000)} o sal más tarde de tu hora prevista para recuperar`;
     } else {
       deudaBox.style.display = 'none';
     }
-  }
-  if (bct) {
-    if (bolsaSemanal > 0) bct.textContent = `1h + 📦 ${bolsaSemanal}m acumulados`;
-    else if (bolsaSemanal < 0) bct.textContent = `1h · ⚠️ ${Math.abs(bolsaSemanal)}m de deuda`;
-    else bct.textContent = '1h total';
   }
 
   // Pausas libres usadas = lo que supera la comida obligatoria (máx bolsaLibre)
@@ -1328,9 +1332,10 @@ function renderHistorial() {
     return buildDayCard(key, d);
   }).join('');
 
-  // Expandir al click
+  // Expandir al click — pero no cuando se toca un input de edición
   cont.querySelectorAll('.hist-day').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
       const body = el.querySelector('.hist-day-events');
       body.classList.toggle('open');
     });
@@ -1706,7 +1711,7 @@ setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v32';
+    const CACHE = 'jornada-v33';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
