@@ -291,7 +291,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <div class="logo-icon">⏱</div>
     <h1>CONTROL DE JORNADA</h1>
   </div>
-  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v34</span></div>
+  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v35</span></div>
 </header>
 
 <div class="now-time" id="nowTime">—</div>
@@ -609,7 +609,9 @@ function calcSobranteDia(dayData, dayDate) {
   const eEnt = events.find(e => e.type === 'entrada');
   if (!eEnt) return 0;
 
-  const hDia = getHorario(new Date(dayDate));
+  // Parse date as local to avoid UTC timezone shift
+  const [yd,mod,dad] = (typeof dayDate === 'string' ? dayDate : new Date(dayDate).toISOString().slice(0,10)).split('-').map(Number);
+  const hDia = getHorario(new Date(yd, mod-1, dad));
   const entMin = tsToMin(eEnt.ts);
   const eSal = events.find(e => e.type === 'salida') || events.find(e => e.type === 'medico');
 
@@ -661,7 +663,9 @@ function calcDeudaDia(dayData, dayDate) {
   const eSal = events.find(e => e.type === 'salida') || events.find(e => e.type === 'medico');
   if (!eSal) return 0;
 
-  const hDia = getHorario(new Date(dayDate));
+  // Parse date as local (avoid UTC midnight timezone shift)
+  const [y,mo,da] = (typeof dayDate === 'string' ? dayDate : new Date(dayDate).toISOString().slice(0,10)).split('-').map(Number);
+  const hDia = getHorario(new Date(y, mo-1, da));
   const entMin = tsToMin(eEnt.ts);
   const salRealMin = tsToMin(eSal.ts);
 
@@ -1750,7 +1754,7 @@ setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v34';
+    const CACHE = 'jornada-v35';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
