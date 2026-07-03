@@ -291,7 +291,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <div class="logo-icon">⏱</div>
     <h1>CONTROL DE JORNADA</h1>
   </div>
-  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v35</span></div>
+  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v36</span></div>
 </header>
 
 <div class="now-time" id="nowTime">—</div>
@@ -611,7 +611,12 @@ function calcSobranteDia(dayData, dayDate) {
 
   // Parse date as local to avoid UTC timezone shift
   const [yd,mod,dad] = (typeof dayDate === 'string' ? dayDate : new Date(dayDate).toISOString().slice(0,10)).split('-').map(Number);
+  // Usar el modo guardado ese día, no el modo actual
+  const savedModo = (dayData.modoVerano !== undefined) ? dayData.modoVerano : modoVerano;
+  const savedModoVerano = modoVerano;
+  modoVerano = savedModo;
   const hDia = getHorario(new Date(yd, mod-1, dad));
+  modoVerano = savedModoVerano; // restaurar modo actual
   const entMin = tsToMin(eEnt.ts);
   const eSal = events.find(e => e.type === 'salida') || events.find(e => e.type === 'medico');
 
@@ -665,7 +670,12 @@ function calcDeudaDia(dayData, dayDate) {
 
   // Parse date as local (avoid UTC midnight timezone shift)
   const [y,mo,da] = (typeof dayDate === 'string' ? dayDate : new Date(dayDate).toISOString().slice(0,10)).split('-').map(Number);
+  // Usar el modo guardado ese día, no el modo actual
+  const savedModo2 = (dayData.modoVerano !== undefined) ? dayData.modoVerano : modoVerano;
+  const savedModoVerano2 = modoVerano;
+  modoVerano = savedModo2;
   const hDia = getHorario(new Date(y, mo-1, da));
+  modoVerano = savedModoVerano2; // restaurar modo actual
   const entMin = tsToMin(eEnt.ts);
   const salRealMin = tsToMin(eSal.ts);
 
@@ -859,6 +869,7 @@ function fichEntrada() {
 function _doFichEntrada() {
   if (hasEvent('entrada')) return;
   const ts = nowTs();
+  state.modoVerano = modoVerano; // guardar modo del día al fichar entrada
   state.events.push({ type:'entrada', ts });
   saveToday(); renderAll();
 }
@@ -1399,7 +1410,12 @@ function buildDayCard(key, d) {
   // Horario del día histórico
   const [y,mo,da] = key.split('-').map(Number);
   const dayDate = new Date(y,mo-1,da);
+  // Usar el modo guardado ese día
+  const savedModo3 = (d.modoVerano !== undefined) ? d.modoVerano : modoVerano;
+  const savedMV3 = modoVerano;
+  modoVerano = savedModo3;
   const hDia = getHorario(dayDate);
+  modoVerano = savedMV3;
   const fecha = dayDate.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
 
   // Bolsa: base del día + minutos antes del mínimo
@@ -1754,7 +1770,7 @@ setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v35';
+    const CACHE = 'jornada-v36';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
