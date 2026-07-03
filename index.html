@@ -291,7 +291,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <div class="logo-icon">⏱</div>
     <h1>CONTROL DE JORNADA</h1>
   </div>
-  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v36</span></div>
+  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v37</span></div>
 </header>
 
 <div class="now-time" id="nowTime">—</div>
@@ -702,11 +702,12 @@ function calcDeudaDia(dayData, dayDate) {
   return Math.round(Math.max(0, salidaPrevista - salRealMin));
 }
 
-// Devuelve deuda total acumulada histórica (no se resetea), compensada por sobrante semanal
+// Devuelve deuda total acumulada histórica (no se resetea), compensada por sobrante acumulado
 function getDeudaTotal() {
   const all = loadStorage();
   const today = todayKey();
   const todayMidnight = new Date(); todayMidnight.setHours(0,0,0,0);
+  const wkActual = weekKey(new Date());
 
   let deuda = 0;
   let recuperado = 0;
@@ -719,11 +720,18 @@ function getDeudaTotal() {
     const d = new Date(y, mo-1, da);
     if (d >= todayMidnight) continue;
 
-    deuda      += calcDeudaDia(all[key], key);
-    recuperado += calcSobranteDia(all[key], key);
+    deuda += calcDeudaDia(all[key], key);
+
+    // El sobrante de la semana actual ya se gestiona en getBolsaSemanal (no contar dos veces)
+    if (weekKey(d) !== wkActual) {
+      recuperado += calcSobranteDia(all[key], key);
+    }
   }
 
-  // El sobrante compensa la deuda
+  // El sobrante semanal actual también compensa la deuda
+  const sobrSemanal = Math.max(0, getBolsaSemanal());
+  recuperado += sobrSemanal;
+
   return Math.max(0, deuda - recuperado);
 }
 
@@ -1770,7 +1778,7 @@ setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v36';
+    const CACHE = 'jornada-v37';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
