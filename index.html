@@ -291,7 +291,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <div class="logo-icon">⏱</div>
     <h1>CONTROL DE JORNADA</h1>
   </div>
-  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v37</span></div>
+  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v38</span></div>
 </header>
 
 <div class="now-time" id="nowTime">—</div>
@@ -474,6 +474,23 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <span class="hist-toggle" id="histToggleTxt">▼ ver</span>
   </div>
   <div id="historialBody" style="display:none">
+    <!-- Backup buttons -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      <button onclick="exportarDatos()" style="
+        background:rgba(108,142,255,.1);border:1px solid rgba(108,142,255,.3);
+        border-radius:10px;color:#6c8eff;font-family:'DM Sans',sans-serif;
+        font-size:12px;font-weight:600;padding:10px;cursor:pointer;transition:all .2s">
+        📤 Exportar backup
+      </button>
+      <label style="
+        background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);
+        border-radius:10px;color:var(--success);font-family:'DM Sans',sans-serif;
+        font-size:12px;font-weight:600;padding:10px;cursor:pointer;transition:all .2s;
+        display:flex;align-items:center;justify-content:center;text-align:center">
+        📥 Importar backup
+        <input type="file" accept=".json" onchange="importarDatos(this)" style="display:none">
+      </label>
+    </div>
     <div id="historialContent"><div class="hist-empty">Sin días registrados</div></div>
   </div>
 </div>
@@ -1370,6 +1387,53 @@ function renderEvents() {
 // ═══════════════════════════════════════════════════════════════
 let histOpen = false;
 
+// ── Backup: exportar / importar ───────────────────────────────
+function exportarDatos() {
+  const all = loadStorage();
+  const modoActual = localStorage.getItem('modoVerano') || 'false';
+  const backup = { version: 'jornada-v37', exportado: new Date().toISOString(), modoVerano: modoActual, datos: all };
+  const json = JSON.stringify(backup, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const fecha = new Date().toISOString().slice(0,10);
+  a.href     = url;
+  a.download = `jornada_backup_${fecha}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showAlert('✅ Backup exportado correctamente', false);
+}
+
+function importarDatos(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const backup = JSON.parse(e.target.result);
+      if (!backup.datos) throw new Error('Formato inválido');
+      const existing = loadStorage();
+      const merged = { ...backup.datos, ...existing };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+      if (backup.modoVerano !== undefined) {
+        localStorage.setItem('modoVerano', backup.modoVerano);
+        modoVerano = backup.modoVerano === 'true';
+      }
+      loadToday();
+      renderAll();
+      renderHistorial();
+      const dias = Object.keys(backup.datos).filter(k=>!k.startsWith('week_')).length;
+      showAlert(`✅ Backup importado — ${dias} días restaurados`, false);
+    } catch(err) {
+      showAlert('❌ Error al importar: archivo no válido', true);
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
 function toggleHistorial() {
   histOpen = !histOpen;
   document.getElementById('historialBody').style.display = histOpen ? 'block' : 'none';
@@ -1778,7 +1842,7 @@ setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v37';
+    const CACHE = 'jornada-v38';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
