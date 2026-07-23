@@ -291,7 +291,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <div class="logo-icon">⏱</div>
     <h1>CONTROL DE JORNADA</h1>
   </div>
-  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v38</span></div>
+  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v39</span></div>
 </header>
 
 <div class="now-time" id="nowTime">—</div>
@@ -730,12 +730,20 @@ function getDeudaTotal() {
   let recuperado = 0;
 
   for (const key of Object.keys(all)) {
-    if (key === today || key.startsWith('week_')) continue;
+    if (key.startsWith('week_')) continue;
     const parts = key.split('-');
     if (parts.length !== 3) continue;
     const [y,mo,da] = parts.map(Number);
     const d = new Date(y, mo-1, da);
-    if (d >= todayMidnight) continue;
+
+    if (key === today) {
+      // El día de hoy solo cuenta para la deuda si ya se ha fichado la salida
+      // (día completado). Su posible sobrante sigue sin contar hasta mañana.
+      const hasSalida = (all[key].events || []).some(e => e.type === 'salida' || e.type === 'medico');
+      if (!hasSalida) continue;
+    } else if (d >= todayMidnight) {
+      continue;
+    }
 
     deuda += calcDeudaDia(all[key], key);
 
@@ -1391,7 +1399,7 @@ let histOpen = false;
 function exportarDatos() {
   const all = loadStorage();
   const modoActual = localStorage.getItem('modoVerano') || 'false';
-  const backup = { version: 'jornada-v37', exportado: new Date().toISOString(), modoVerano: modoActual, datos: all };
+  const backup = { version: 'jornada-v39', exportado: new Date().toISOString(), modoVerano: modoActual, datos: all };
   const json = JSON.stringify(backup, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
@@ -1842,7 +1850,7 @@ setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v38';
+    const CACHE = 'jornada-v39';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
