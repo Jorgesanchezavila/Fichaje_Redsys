@@ -453,7 +453,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <button class="btn-pause btn-break" id="btnBreak" onclick="toggleBreak()" disabled>
       <span class="btn-icon">☕</span>
       <span>DESCANSO</span>
-      <span class="btn-sub" id="lblBreak">inactivo</span>
+      <span class="btn-sub" id="lblBreak">pulsa = −5 min</span>
     </button>
   </div>
 
@@ -730,20 +730,12 @@ function getDeudaTotal() {
   let recuperado = 0;
 
   for (const key of Object.keys(all)) {
-    if (key.startsWith('week_')) continue;
+    if (key === today || key.startsWith('week_')) continue;
     const parts = key.split('-');
     if (parts.length !== 3) continue;
     const [y,mo,da] = parts.map(Number);
     const d = new Date(y, mo-1, da);
-
-    if (key === today) {
-      // El día de hoy solo cuenta para la deuda si ya se ha fichado la salida
-      // (día completado). Su posible sobrante sigue sin contar hasta mañana.
-      const hasSalida = (all[key].events || []).some(e => e.type === 'salida' || e.type === 'medico');
-      if (!hasSalida) continue;
-    } else if (d >= todayMidnight) {
-      continue;
-    }
+    if (d >= todayMidnight) continue;
 
     deuda += calcDeudaDia(all[key], key);
 
@@ -829,7 +821,8 @@ function calcPausasMin(nowTsMs) {
   const bFins = state.events.filter(e=>e.type==='break_fin');
   bInis.forEach((ini,i) => {
     const fin = bFins[i];
-    const endTs = fin ? Math.min(fin.ts, nowTsMs) : nowTsMs;
+    // Si el descanso tiene fin, cuenta completo al instante (descanso fijo de 5 min)
+    const endTs = fin ? fin.ts : nowTsMs;
     breaks += Math.max(0, (endTs - ini.ts)/60000);
   });
   return { comida, breaks, total: comida+breaks };
@@ -947,10 +940,14 @@ function toggleComida() {
 function toggleBreak() {
   if (!hasEvent('entrada') || hasEvent('salida')) return;
   if (isBreakOpen()) {
+    // Descanso abierto manualmente (sin fin): se cierra ahora
     state.events.push({ type:'break_fin', ts:nowTs() });
   } else {
     if (isComidaOpen()) state.events.push({ type:'comida_fin', ts:nowTs() }); // cerrar comida activa
-    state.events.push({ type:'break_ini', ts:nowTs() });
+    // Descanso fijo de 5 minutos: se descuenta al instante
+    const t = nowTs();
+    state.events.push({ type:'break_ini', ts:t });
+    state.events.push({ type:'break_fin', ts:t + 5*60000 });
   }
   saveToday(); renderAll();
 }
@@ -1052,7 +1049,7 @@ function renderAll() {
   btnC.className = 'btn-pause btn-comida' + (comidaOn ? ' active-state' : '');
   btnB.className = 'btn-pause btn-break'  + (breakOn  ? ' active-state' : '');
   document.getElementById('lblComida').textContent = comidaOn ? 'activa ●' : (hasEvent('comida_ini') ? 'completada' : 'inactivo');
-  document.getElementById('lblBreak').textContent  = breakOn  ? 'activo ●'  : 'inactivo';
+  document.getElementById('lblBreak').textContent  = breakOn  ? 'activo ●'  : 'pulsa = −5 min';
 
   // ── Cálculos ──
   if (!entered) {
@@ -1399,7 +1396,7 @@ let histOpen = false;
 function exportarDatos() {
   const all = loadStorage();
   const modoActual = localStorage.getItem('modoVerano') || 'false';
-  const backup = { version: 'jornada-v39', exportado: new Date().toISOString(), modoVerano: modoActual, datos: all };
+  const backup = { version: 'jornada-v37', exportado: new Date().toISOString(), modoVerano: modoActual, datos: all };
   const json = JSON.stringify(backup, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
