@@ -291,7 +291,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <div class="logo-icon">⏱</div>
     <h1>CONTROL DE JORNADA</h1>
   </div>
-  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v39</span></div>
+  <div class="subtitle">Seguimiento de horario laboral &nbsp;·&nbsp; <span style="color:var(--accent);font-family:'Space Mono',monospace;">v40</span></div>
 </header>
 
 <div class="now-time" id="nowTime">—</div>
@@ -315,6 +315,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
   <div class="exit-info-label">Salida prevista</div>
   <div class="exit-info-time" id="exitTime">--:--</div>
   <div class="exit-info-sub" id="statExitSub">Pulsa ENTRADA para comenzar</div>
+  <div class="exit-info-sub" id="exitSinBolsa" style="display:none;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)"></div>
 </div>
 
 <div class="display-card" id="displayCard">
@@ -337,6 +338,20 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <div id="deudaCardBar" style="height:100%;border-radius:100px;
       background:linear-gradient(90deg,var(--danger),var(--accent2));
       transition:width .5s ease;width:0%"></div>
+  </div>
+</div>
+
+<!-- RESUMEN SEMANAL (lunes) -->
+<div id="resumenSemCard" style="display:none;width:100%;max-width:460px;margin-bottom:14px;
+  background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:18px;position:relative">
+  <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:8px">📊 Resumen semana anterior</div>
+  <div id="resumenSemBody" style="font-size:13px;line-height:1.6"></div>
+  <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:12px">
+    <button onclick="enviarResumenSemanal()" style="background:rgba(108,142,255,.1);border:1px solid rgba(108,142,255,.3);
+      border-radius:10px;color:#6c8eff;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;padding:10px;cursor:pointer">
+      📧 Enviar por email</button>
+    <button onclick="cerrarResumenSemanal()" style="background:transparent;border:1px solid var(--border);
+      border-radius:10px;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:12px;padding:10px;cursor:pointer">Ocultar</button>
   </div>
 </div>
 
@@ -453,7 +468,7 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <button class="btn-pause btn-break" id="btnBreak" onclick="toggleBreak()" disabled>
       <span class="btn-icon">☕</span>
       <span>DESCANSO</span>
-      <span class="btn-sub" id="lblBreak">pulsa = −5 min</span>
+      <span class="btn-sub" id="lblBreak">inactivo</span>
     </button>
   </div>
 
@@ -474,6 +489,9 @@ h1{font-family:'Space Mono',monospace;font-size:clamp(16px,4vw,24px);font-weight
     <span class="hist-toggle" id="histToggleTxt">▼ ver</span>
   </div>
   <div id="historialBody" style="display:none">
+    <button onclick="mostrarResumenSemanal(true)" style="width:100%;margin-bottom:8px;background:rgba(227,6,19,.08);
+      border:1px solid rgba(227,6,19,.25);border-radius:10px;color:var(--accent);font-family:'DM Sans',sans-serif;
+      font-size:12px;font-weight:600;padding:10px;cursor:pointer">📊 Resumen semana anterior</button>
     <!-- Backup buttons -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
       <button onclick="exportarDatos()" style="
@@ -719,6 +737,121 @@ function calcDeudaDia(dayData, dayDate) {
   return Math.round(Math.max(0, salidaPrevista - salRealMin));
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// RESUMEN SEMANAL (semana anterior) + envío por email
+// ═══════════════════════════════════════════════════════════════
+const EMAIL_RESUMEN = 'jorge.sanchez.avila@gmail.com';
+
+function dateKey(d) {
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+// Minutos esperados vs reales de un día completado
+function calcTrabajadoDia(dayData, key) {
+  const events = (dayData && dayData.events) ? dayData.events : [];
+  const eEnt = events.find(e => e.type === 'entrada');
+  const eSal = events.find(e => e.type === 'salida') || events.find(e => e.type === 'medico');
+  if (!eEnt || !eSal) return null;
+  const [y,mo,da] = key.split('-').map(Number);
+  const saved = modoVerano;
+  if (dayData.modoVerano !== undefined) modoVerano = dayData.modoVerano;
+  const hDia = getHorario(new Date(y, mo-1, da));
+  modoVerano = saved;
+
+  const topeTs = eSal.ts;
+  let pausas = 0;
+  const cIni = events.find(e => e.type === 'comida_ini');
+  const cFin = events.find(e => e.type === 'comida_fin');
+  if (cIni) pausas += Math.max(0, ((cFin ? Math.min(cFin.ts, topeTs) : topeTs) - cIni.ts) / 60000);
+  const bIni = events.filter(e => e.type === 'break_ini');
+  const bFin = events.filter(e => e.type === 'break_fin');
+  bIni.forEach((ini,i) => { const f = bFin[i]; pausas += Math.max(0, ((f ? Math.min(f.ts, topeTs) : topeTs) - ini.ts) / 60000); });
+
+  const real = Math.max(0, (eSal.ts - eEnt.ts) / 60000 - pausas);
+  return { esperada: hDia.jornadaMin, real: Math.round(real), ent: eEnt.ts, sal: eSal.ts, medico: eSal.type === 'medico' };
+}
+
+// Datos de la semana anterior (lunes a domingo)
+function getResumenSemanaAnterior() {
+  const all = loadStorage();
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const lunesActual = new Date(hoy); lunesActual.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7));
+  const lunesPrev = new Date(lunesActual); lunesPrev.setDate(lunesActual.getDate() - 7);
+
+  const dias = [];
+  let esperada = 0, real = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(lunesPrev); d.setDate(lunesPrev.getDate() + i);
+    const k = dateKey(d);
+    const r = all[k] ? calcTrabajadoDia(all[k], k) : null;
+    if (!r) continue;
+    esperada += r.esperada; real += r.real;
+    dias.push({ fecha: d, ...r });
+  }
+  const domingo = new Date(lunesPrev); domingo.setDate(lunesPrev.getDate() + 6);
+  return { lunes: lunesPrev, domingo, dias, esperada, real, balance: real - esperada };
+}
+
+function textoResumenSemanal(r) {
+  const f = d => d.toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit' });
+  const dn = d => d.toLocaleDateString('es-ES', { weekday:'short' });
+  let t = `Resumen de la semana ${f(r.lunes)} - ${f(r.domingo)}\n\n`;
+  if (!r.dias.length) return t + 'Sin jornadas completadas registradas.\n';
+  r.dias.forEach(x => {
+    const dif = x.real - x.esperada;
+    t += `${dn(x.fecha)} ${f(x.fecha)}: ${toHM(x.ent)}-${toHM(x.sal)}${x.medico ? ' (médico)' : ''} · trabajado ${fmtHM(x.real)} / ${fmtHM(x.esperada)} (${dif >= 0 ? '+' : '-'}${Math.abs(Math.round(dif))}m)\n`;
+  });
+  t += `\nHoras que se debían trabajar: ${fmtHM(r.esperada)}\n`;
+  t += `Horas reales trabajadas: ${fmtHM(r.real)}\n`;
+  t += r.balance < 0
+    ? `⚠️ Te faltan por recuperar: ${fmtHM(Math.abs(r.balance))}\n`
+    : `✓ No tienes tiempo pendiente${r.balance > 0 ? ` (a favor: ${fmtHM(r.balance)})` : ''}\n`;
+  t += `\nNota: solo cuentan los días con entrada y salida fichadas.\n`;
+  return t;
+}
+
+function mostrarResumenSemanal(forzar) {
+  const card = document.getElementById('resumenSemCard');
+  if (!card) return;
+  const r = getResumenSemanaAnterior();
+  const color = r.balance < 0 ? 'var(--danger)' : 'var(--success)';
+  document.getElementById('resumenSemBody').innerHTML = r.dias.length
+    ? `Debías trabajar: <strong>${fmtHM(r.esperada)}</strong><br>Trabajaste: <strong>${fmtHM(r.real)}</strong><br>` +
+      (r.balance < 0
+        ? `<span style="color:${color}">⚠️ Te faltan por recuperar: <strong>${fmtHM(Math.abs(r.balance))}</strong></span>`
+        : `<span style="color:${color}">✓ Sin tiempo pendiente${r.balance > 0 ? ` (a favor: ${fmtHM(r.balance)})` : ''}</span>`)
+    : 'Sin jornadas completadas la semana pasada.';
+  card.style.display = 'block';
+  if (forzar) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cerrarResumenSemanal() {
+  document.getElementById('resumenSemCard').style.display = 'none';
+  localStorage.setItem('resumenSemOculto', weekKey(new Date()));
+}
+
+function enviarResumenSemanal() {
+  const r = getResumenSemanaAnterior();
+  const f = d => d.toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit' });
+  const asunto = `Resumen semanal ${f(r.lunes)}-${f(r.domingo)}: ${r.balance < 0 ? 'faltan ' + fmtHM(Math.abs(r.balance)) : 'sin tiempo pendiente'}`;
+  window.location.href = `mailto:${EMAIL_RESUMEN}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(textoResumenSemanal(r))}`;
+  localStorage.setItem('resumenSemEnviado', weekKey(new Date()));
+}
+
+// Los lunes: mostrar la tarjeta (y avisar una vez) hasta que se oculte
+function checkResumenLunes() {
+  const now = new Date();
+  if (now.getDay() !== 1) return;
+  const wk = weekKey(now);
+  if (localStorage.getItem('resumenSemOculto') === wk) return;
+  mostrarResumenSemanal(false);
+  if (localStorage.getItem('resumenSemAvisado') !== wk) {
+    localStorage.setItem('resumenSemAvisado', wk);
+    sendNotif('📊 Resumen semanal listo', 'Revisa y envía el resumen de la semana anterior');
+  }
+}
+
 // Devuelve deuda total acumulada histórica (no se resetea), compensada por sobrante acumulado
 function getDeudaTotal() {
   const all = loadStorage();
@@ -730,12 +863,20 @@ function getDeudaTotal() {
   let recuperado = 0;
 
   for (const key of Object.keys(all)) {
-    if (key === today || key.startsWith('week_')) continue;
+    if (key.startsWith('week_')) continue;
     const parts = key.split('-');
     if (parts.length !== 3) continue;
     const [y,mo,da] = parts.map(Number);
     const d = new Date(y, mo-1, da);
-    if (d >= todayMidnight) continue;
+
+    if (key === today) {
+      // El día de hoy solo cuenta para la deuda si ya se ha fichado la salida
+      // (día completado). Su posible sobrante sigue sin contar hasta mañana.
+      const hasSalida = (all[key].events || []).some(e => e.type === 'salida' || e.type === 'medico');
+      if (!hasSalida) continue;
+    } else if (d >= todayMidnight) {
+      continue;
+    }
 
     deuda += calcDeudaDia(all[key], key);
 
@@ -821,8 +962,7 @@ function calcPausasMin(nowTsMs) {
   const bFins = state.events.filter(e=>e.type==='break_fin');
   bInis.forEach((ini,i) => {
     const fin = bFins[i];
-    // Si el descanso tiene fin, cuenta completo al instante (descanso fijo de 5 min)
-    const endTs = fin ? fin.ts : nowTsMs;
+    const endTs = fin ? Math.min(fin.ts, nowTsMs) : nowTsMs;
     breaks += Math.max(0, (endTs - ini.ts)/60000);
   });
   return { comida, breaks, total: comida+breaks };
@@ -940,14 +1080,10 @@ function toggleComida() {
 function toggleBreak() {
   if (!hasEvent('entrada') || hasEvent('salida')) return;
   if (isBreakOpen()) {
-    // Descanso abierto manualmente (sin fin): se cierra ahora
     state.events.push({ type:'break_fin', ts:nowTs() });
   } else {
     if (isComidaOpen()) state.events.push({ type:'comida_fin', ts:nowTs() }); // cerrar comida activa
-    // Descanso fijo de 5 minutos: se descuenta al instante
-    const t = nowTs();
-    state.events.push({ type:'break_ini', ts:t });
-    state.events.push({ type:'break_fin', ts:t + 5*60000 });
+    state.events.push({ type:'break_ini', ts:nowTs() });
   }
   saveToday(); renderAll();
 }
@@ -1049,7 +1185,7 @@ function renderAll() {
   btnC.className = 'btn-pause btn-comida' + (comidaOn ? ' active-state' : '');
   btnB.className = 'btn-pause btn-break'  + (breakOn  ? ' active-state' : '');
   document.getElementById('lblComida').textContent = comidaOn ? 'activa ●' : (hasEvent('comida_ini') ? 'completada' : 'inactivo');
-  document.getElementById('lblBreak').textContent  = breakOn  ? 'activo ●'  : 'pulsa = −5 min';
+  document.getElementById('lblBreak').textContent  = breakOn  ? 'activo ●'  : 'inactivo';
 
   // ── Cálculos ──
   if (!entered) {
@@ -1178,6 +1314,21 @@ function renderAll() {
   const todayBase = new Date(); todayBase.setHours(0,0,0,0);
   const salidaTs  = todayBase.getTime() + salida * 60000;
   const medicoEv  = getLastEvent('medico');
+
+  // ── Salida prevista sin contar el acumulado (bolsa) de días anteriores ──
+  const salidaSinAcum = Math.max(
+    entMin + H.jornadaMin + pausasSumadasASalida - Math.min(0, bolsaSemanal),
+    H.minSalida
+  );
+  const sinBolsaEl = document.getElementById('exitSinBolsa');
+  if (sinBolsaEl) {
+    if (bolsaSemanal > 0) {
+      sinBolsaEl.style.display = 'block';
+      sinBolsaEl.innerHTML = `Sin 📦 acumulado: <strong style="color:var(--text)">${toHM(todayBase.getTime() + salidaSinAcum * 60000)}</strong> <span style="opacity:.7">(−${bolsaSemanal}m con acumulado)</span>`;
+    } else {
+      sinBolsaEl.style.display = 'none';
+    }
+  }
 
   // ── Hora de salida ──
   document.getElementById('exitTime').textContent = toHM(salidaTs);
@@ -1396,7 +1547,7 @@ let histOpen = false;
 function exportarDatos() {
   const all = loadStorage();
   const modoActual = localStorage.getItem('modoVerano') || 'false';
-  const backup = { version: 'jornada-v37', exportado: new Date().toISOString(), modoVerano: modoActual, datos: all };
+  const backup = { version: 'jornada-v40', exportado: new Date().toISOString(), modoVerano: modoActual, datos: all };
   const json = JSON.stringify(backup, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
@@ -1840,6 +1991,7 @@ function checkPauseNotifications() {
 
 loadToday();
 renderAll();
+checkResumenLunes();
 requestNotifPermission();
 setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 </script>
@@ -1847,7 +1999,7 @@ setInterval(() => { renderAll(); checkPauseNotifications(); }, 1000);
 // ── PWA Service Worker (inline via blob) ──────────────────────
 if ('serviceWorker' in navigator) {
   const swCode = `
-    const CACHE = 'jornada-v39';
+    const CACHE = 'jornada-v40';
     self.addEventListener('install', e => {
       e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(()=>{}));
       self.skipWaiting();
